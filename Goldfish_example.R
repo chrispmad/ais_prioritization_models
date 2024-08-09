@@ -92,10 +92,10 @@ all_rasters = c(pred_bioc_c, NA_ph_res, NA_calc_res, elev_res)
 names(all_rasters)[c(1,12)] <- c("temp","precip")
 
 random_sample = spatSample(x = pred_bioc_c,
-           size = 1000,
-           na.rm=T,
-           values = FALSE,
-           xy = TRUE) |> 
+                           size = 1000,
+                           na.rm=T,
+                           values = FALSE,
+                           xy = TRUE) |> 
   as_tibble() |> 
   dplyr::mutate(present = 0)
 
