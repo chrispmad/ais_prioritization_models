@@ -28,12 +28,12 @@ onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Governm
 setwd(onedrive_wd)
 
 # Pull in climate variables
-NA_ph = terra::rast("ph-KR-208784-median_10km_ZN.tif") |> terra::project("EPSG:4326")
-names(NA_ph) <- "pH"
+ph_NAM = terra::rast("ph-KR-208784-median_10km_ZN.tif") |> terra::project("EPSG:4326")
+names(ph_NAM) <- "pH"
 # NA_ph_var = terra::rast("ph-KR-208784-median_10km_ZN_variance.tif") |> terra::project("EPSG:4326")
 
-NA_calc = terra::rast("calcium-KR-97648-median-10km-ZN.tif") |> terra::project("EPSG:4326")
-names(NA_calc) <- "calc"
+Calc_NAM = terra::rast("calcium-KR-97648-median-10km-ZN.tif") |> terra::project("EPSG:4326")
+names(Calc_NAM) <- "calc"
 # NA_calc_var = terra::rast("calcium-KR-97648-median-10km-ZN_variance.tif") |> terra::project("EPSG:4326")
 
 # Worldclim Bioclimatic variables. 
@@ -54,8 +54,8 @@ names(pred_bioc)<-renames
 
 # Cut our rasters down to just BC.
 bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-NA_ph_c = mask(crop(NA_ph, bc_vect), bc_vect)
-NA_calc_c = mask(crop(NA_calc, bc_vect), bc_vect)
+NA_ph_c = mask(crop(ph_NAM, bc_vect), bc_vect)
+NA_calc_c = mask(crop(Calc_NAM, bc_vect), bc_vect)
 pred_bioc_c = mask(crop(pred_bioc, bc_vect), bc_vect)
 
 # Pull in elevation raster with {elevatr}
