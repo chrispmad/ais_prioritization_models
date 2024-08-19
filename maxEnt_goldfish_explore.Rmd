@@ -1,0 +1,287 @@
+---
+title: "MaxEnt Explore"
+author: "John Phelan and Chris Madsen"
+date: "8/19/2024"
+output: html_document
+---
+
+## Why are we modelling?
+
+The modelling quetion is:
+What areas are vulnerable to aquatic invasive species? What are the key drivers of their movement? What are their vectors of tranpsot??? 
+
+MaxEnt is a common modelling approach for presence only data. This will require the generation of pseudo-absence data? How does the model select parameters?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 12, fig.height = 8)
+library(tidyverse)
+library(DBI)
+library(bcinvadeR)
+library(terra)
+library(sf)
+library(geodata)
+library(predicts)
+library(ggpubr)
+source("ZuurFuncs.R")
+#set locations
+proj_wd = getwd()
+onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/CNF/data/")
+
+```
+
+## Data description
+
+The data to be modelled is potential habitat, or locations, of aquatic invasive species. Presence data comes from a range of sources:
+1.	Wildlife Species Inventory Incidental Observations layer on BC Warehouse
+2.	Aquatic Invasive Species of British Columbia layer on BC Warehouse
+3.	Master Incidence Report Records excel file
+4.	iNaturalist (BC only)
+These sources provide us with the source of the data, The date of recording, the species in question, the name of the location, and the geometry (location) where the species was recorded. There are no absence data supplied.
+
+Annual mean temperature is available from Worldclim. Historical and future climate scenarios are available. The data are supplied as rasters and are in 2.5, 5 or 10 minute increments.
+
+pH and Caclium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters/
+
+Elevation ----
+
+```{r data_collection, echo=FALSE}
+sppOI<-"goldfish"
+# Get occurrence data for species.
+d = suppressMessages(grab_aq_occ_data(sppOI))
+# Pull in climate variables
+ph_NAM = terra::rast(paste0(onedrive_wd,"ph-KR-208784-median_10km_ZN.tif")) |> terra::project("EPSG:4326")
+names(ph_NAM) <- "pH"
+Calc_NAM = terra::rast(paste0(onedrive_wd,"calcium-KR-97648-median-10km-ZN.tif")) |> terra::project("EPSG:4326")
+names(Calc_NAM) <- "calc"
+
+# Read in variable names for the worldclim variables.
+source(paste0(proj_wd,"/scripts/utils/worldclim_bioc_var_names.R"))
+cmidata<-cmip6_world("ACCESS-CM2", ssp = "585", var = "bioc", res = 5, time = "2021-2040",path="CMI/")
+names(cmidata)<-renames
+pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
+names(pred_bioc)<-renames
+
+# Cut our rasters down to just BC.
+bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
+ph_clipped = mask(crop(ph_NAM, bc_vect), bc_vect)
+calc_clipped = mask(crop(Calc_NAM, bc_vect), bc_vect)
+pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
+
+# Pull in elevation raster with {elevatr}
+elev = suppressMessages(elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 4)) |>
+  terra::rast() |> 
+  terra::crop(bc_vect) |> 
+  terra::mask(bc_vect)
+names(elev) = "elev"
+
+```
+
+### Plotting Rasters {.tabset}
+
+#### Annual Mean Temperature
+```{r mean_temp}
+### Looking at the metadata of a raster - from online?
+#describe(pred_bioc, meta = T)
+
+plot(pred_bioc_clipped[[1]],
+      main = "Temperature in British Columbia")
+
+terra::hist(pred_bioc_clipped[[1]],
+           main = "Temperature frequency",
+           xlab = "Temperature", ylab = "Frequency", col = "red")
+
+```
+
+
+
+
+#### ph in British Columbia
+```{r pH_plot}
+
+plot(ph_clipped, main = "pH across the province")
+
+terra::hist(ph_clipped,
+           main = "pH frequency values",
+           xlab = "pH", ylab = "Frequency", col = "lightblue")
+
+```
+
+#### Calcium concentration in British Columbia
+```{r Calc_plot}
+
+plot(calc_clipped, main = "Calcium across the province")
+
+terra::hist(calc_clipped,
+           main = "Calcium in British Columbia",
+           xlab = "Ca", ylab = "Frequency", col = "Blue")
+```
+
+#### Elevation
+```{r elev_plot}
+plot(elev, main = "Province elevation")
+```
+
+```{r fixing_data}
+
+
+NA_ph_res = terra::resample(ph_clipped, pred_bioc_clipped)
+NA_calc_res = terra::resample(calc_clipped, pred_bioc_clipped)
+
+elev_res = terra::resample(elev, pred_bioc_clipped)
+
+all_rasters = c(pred_bioc_clipped, NA_ph_res, NA_calc_res, elev_res)
+
+names(all_rasters)[c(1,12)] <- c("temp","precip")
+
+
+## how to decide the number of samples to be taken? Computational restraints.
+## constraints of the raster being sampled from
+# random_sample = spatSample(x = pred_bioc_clipped,
+#                            size = 1000,
+#                            na.rm=T,
+#                            values = FALSE,
+#                            xy = TRUE) |> 
+#   as_tibble() |> 
+#   dplyr::mutate(present = 0)
+
+samp<- d %>% 
+    plyr::mutate(x = st_coordinates(geometry)[,1],
+                     y = st_coordinates(geometry)[,2]) %>% 
+    sf::st_drop_geometry() |> 
+    dplyr::select(x,y) |> 
+    mutate(present = 1)
+  
+
+# Combine random sample with count data
+# samp = dplyr::bind_rows(
+#   random_sample,
+#   d |> dplyr::mutate(x = st_coordinates(geometry)[,1],
+#                      y = st_coordinates(geometry)[,2]) |> 
+#     sf::st_drop_geometry() |> 
+#     dplyr::select(x,y) |> 
+#     mutate(present = 1)
+# )
+
+```
+
+### Where are the observations?
+
+#### Presence plot
+```{r plot_points}
+
+bc<-sf::st_transform(bcmaps::bc_bound(),4326)
+
+ggplot()+
+  geom_sf(data = bc, color = "lightgrey", alpha = 0.7)+
+  geom_point(data = samp, aes (x = x, y = y, color = as.factor(present)), size = 1.3)+
+  scale_color_manual(values = c("0" = "purple", "1" = "darkgreen"),
+                     labels = c("0" = "Absent", "1" = "Present"))+
+  labs(color = paste0("Presence of ",sppOI))+
+  ggthemes::theme_map()+
+  theme(plot.title = element_text(size = rel(2), face = "bold"),
+        plot.subtitle = element_text(size = rel(1.8)),
+        legend.title = element_text(size = rel(1.8)),
+        legend.text = element_text(size = rel(1.2)),
+        legend.position = 'bottom',
+        panel.background = element_blank()
+  ) 
+```
+
+
+```{r get_var_at_spp_occurance}
+# Extract raster variable values at species occurrence point locations.
+samp$temp = terra::extract(pred_bioc_clipped[[1]], samp[,c("x","y")], ID = FALSE)
+samp$precip = terra::extract(pred_bioc_clipped$Annual_Precipitation, samp[,c("x","y")], ID = FALSE)
+samp$calc = terra::extract(calc_clipped$calc, samp[,c("x","y")], ID = FALSE)
+samp$pH = terra::extract(ph_clipped, samp[,c("x","y")], ID = FALSE)
+samp$elev = terra::extract(elev, samp[,c("x","y")], ID = FALSE)
+samp = as.data.frame(samp)
+
+samp = samp |> 
+  mutate(across(everything(), \(x) as.numeric(unlist(x))))
+#dop NA's
+samp = samp[complete.cases(samp),]
+```
+
+### Looking for outliers
+
+For the prsence/absence data, sample the rasters to get the corresponding explanatory variables!
+#### Dotplots
+```{r plotting_Explanatory_var}
+samp$fPresent<-as.factor(samp$present)
+par(mfrow = c(3, 2))
+dotchart(samp$temp, main = "temp", group = samp$fPresent)
+dotchart(samp$precip, main = "precip", group = samp$fPresent)
+dotchart(samp$calc, main = "Calcium", group = samp$fPresent)
+dotchart(samp$pH, main = "pH", group = samp$fPresent)
+dotchart(samp$elev, main = "Elev", group = samp$fPresent)
+
+```
+
+ The x-axis shows the value of the obervation and the y-axis is the observations. The dotplots don't show any clear outliers in the data. If there were outliers, there are some things that could be done about them at this stage. We could drop them, but this could remove valuable information from the data, particularly if they are presence data. It is better to understand if they are truely erroneours or the datum is valid. If two or three data are large across all explanatory variables, they should be dropped. A transformation could be useful, particularly based on the type of variable being looked at.
+
+#### Boxplots
+```{r}
+par(mfrow = c(3, 2))
+boxplot(temp~present, data = samp, main = "temp")
+boxplot(precip~present, data = samp, main = "precip")
+boxplot(calc~present, data = samp, main = "calc")
+boxplot(pH~present, data = samp, main = "ph")
+boxplot(elev~present, data = samp, main = "elev")
+
+```
+
+The boxplots are again split by presence and absence. 
+
+
+The data appears as I expect it would. There are some lower temperatures, but the time of sampling has not been included here. Seasonality could be an important factor? If a species is established maybe this doesn't matter.
+
+### Examining colinearity
+
+### Pairwise plots
+Colinearity looks for high correlation between explanatory variables. 
+```{r pairwise_plots}
+Z<-cbind(samp$present, samp$temp, samp$precip, samp$calc, samp$pH, samp$elev)
+colnames(Z)<-c("Present", "Temp", "Precip", "Calcium", "pH", "Elevation")
+pairs(Z[,-1], lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
+```
+
+Colinearity > +/-0.5 indicates high colinearity between variables. 
+
+Correlation is a problem. Temperature and elevation are negatively correlated. That makes sense. Precipitation and pH are correlated as are pH and calcium and pH and elevation.
+
+Elevation is correlated with almost everything else. This is a candidate for dropping from the model.
+
+
+#### Variance inflation factors
+```{r corvif}
+corvif(Z[, c(-1,-7)])
+```
+
+In this, we are looking for variables with values above 3. Temperature, precipiation, pH and elevation are all above this threshold. This further confirms my suspicion that elevation needs to be removed for this model.
+
+
+#### Pairwise plots with no elevation
+Colinearity looks for high correlation between explanatory variables. 
+```{r pairwise_plots_no_elevation}
+Z2<-cbind(samp$present, samp$temp, samp$precip, samp$calc, samp$pH)
+colnames(Z2)<-c("Present", "Temp", "Precip", "Calcium", "pH")
+pairs(Z2[,-1], lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
+```
+
+
+
+#### Variance inflation factors with no elevation
+```{r corvif again}
+corvif(Z[, c(-1,-6)])
+```
+
+Removing elevation has dropped the VIF score of temperature.
+
+## Key questions about the structure of the model
+1. How does maxent do presence only?
+2. How does maxent select variables?
+
+
+
