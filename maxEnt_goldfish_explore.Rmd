@@ -8,7 +8,7 @@ output: html_document
 ## Why are we modelling?
 
 The modelling quetion is:
-What areas are vulnerable to aquatic invasive species? What are the key drivers of their movement? What are their vectors of tranpsot??? 
+What areas are vulnerable to aquatic invasive species? What are the key drivers of their movement? What are their vectors of tranpsort??? 
 
 MaxEnt is a common modelling approach for presence only data. This will require the generation of pseudo-absence data? How does the model select parameters?
 
@@ -33,15 +33,23 @@ onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Governm
 ## Data description
 
 The data to be modelled is potential habitat, or locations, of aquatic invasive species. Presence data comes from a range of sources:
+
 1.	Wildlife Species Inventory Incidental Observations layer on BC Warehouse
+
 2.	Aquatic Invasive Species of British Columbia layer on BC Warehouse
+
 3.	Master Incidence Report Records excel file
+
 4.	iNaturalist (BC only)
+
 These sources provide us with the source of the data, The date of recording, the species in question, the name of the location, and the geometry (location) where the species was recorded. There are no absence data supplied.
 
 Annual mean temperature is available from Worldclim. Historical and future climate scenarios are available. The data are supplied as rasters and are in 2.5, 5 or 10 minute increments.
 
-pH and Caclium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters/
+pH and Calcium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters.
+
+
+Temperature should come from EMS too!
 
 Elevation ----
 
@@ -219,7 +227,7 @@ dotchart(samp$elev, main = "Elev", group = samp$fPresent)
 
 ```
 
- The x-axis shows the value of the obervation and the y-axis is the observations. The dotplots don't show any clear outliers in the data. If there were outliers, there are some things that could be done about them at this stage. We could drop them, but this could remove valuable information from the data, particularly if they are presence data. It is better to understand if they are truely erroneours or the datum is valid. If two or three data are large across all explanatory variables, they should be dropped. A transformation could be useful, particularly based on the type of variable being looked at.
+The x-axis shows the value of the obervation and the y-axis is the observations. The dotplots don't show any clear outliers in the data. If there were outliers, there are some things that could be done about them at this stage. We could drop them, but this could remove valuable information from the data, particularly if they are presence data. It is better to understand if they are truely erroneours or the datum is valid. If two or three data are large across all explanatory variables, they should be dropped. A transformation could be useful, particularly based on the type of variable being looked at.
 
 #### Boxplots
 ```{r}
@@ -239,7 +247,7 @@ The data appears as I expect it would. There are some lower temperatures, but th
 
 ### Examining colinearity
 
-### Pairwise plots
+#### Pairwise plots
 Colinearity looks for high correlation between explanatory variables. 
 ```{r pairwise_plots}
 Z<-cbind(samp$present, samp$temp, samp$precip, samp$calc, samp$pH, samp$elev)
@@ -280,8 +288,11 @@ corvif(Z[, c(-1,-6)])
 Removing elevation has dropped the VIF score of temperature.
 
 ## Key questions about the structure of the model
-1. How does maxent do presence only?
+1. How does maxent do presence only? - it uses surrounding areas as background points
+
 2. How does maxent select variables?
+
+3. Are the resolutions of the rasters sufficient? - limitation to be addressed
 
 
 
