@@ -6,3 +6,4 @@ data/**
 scripts/**
 *.Rproj
 CMI/**
+*.html
