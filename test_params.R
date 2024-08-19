@@ -49,4 +49,8 @@ boxplot(pred_bioc_c$Annual_Mean_Temperature, maxpixels = 100000, main = "Annual 
 # spatial covariates
 # drop based on common sense or biological knowledge
 
+###############################################
+## 6. Relationship between Y and X variables?
+###############################################
+
 
