@@ -296,3 +296,4 @@ Removing elevation has dropped the VIF score of temperature.
 
 
 
+
