@@ -8,16 +8,21 @@ library(bcmaps)
 conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
 
 dbListTables(conn) # list the table(s)
+
 test1<-dbGetQuery(conn, "select * from results where parameter like '%Temperature%'")
+
+pH <-dbGetQuery(conn, "select * from results where parameter like 'pH' and strftime('&Y', COLLECTION_DATE) >= 2022")
 
 ##date column - collection start and collection end - if need date specific - convert back to datetime
 
 class(test1)
 str(test1)
+
 test1<-test1[!is.na(test1$LATITUDE),]
 test1<-test1[!is.na(test1$LONGITUDE),]
 
 tempSF<-st_as_sf(test1, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
+
 ggplot()+
   geom_sf(data = tempSF)
 
@@ -26,6 +31,7 @@ class(tempSF$COLLECTION_DATE[1])
 summary(tempSF$COLLECTION_DATE)
 
 temp2024<-tempSF[tempSF$COLLECTION_DATE >= "2024-01-01",]
+
 results<-temp2024 %>% 
   select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
   filter(!is.na(RESULT))
@@ -75,10 +81,17 @@ p1<-ggplot()+
   geom_point(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
   geom_line(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
   facet_wrap(~ (MONITORING_LOCATION), ncol = 5)
+
 ggsave("./images/monitoringlocs.png",p1, height = 400, units = "cm", limitsize = F)
 
+# How many monitoring locations have 3 or more data points in 2024?
+river2024_data_rich = river2024 |> 
+  dplyr::group_by(MONITORING_LOCATION) |> 
+  dplyr::mutate(number_datapoints = n()) |> 
+  dplyr::ungroup() |> 
+  dplyr::filter(number_datapoints >= 3)
 
-river2024TF<-st_transform(river2024, 3005)
+river2024TF<-st_transform(river2024_data_rich, 3005)
 plot(st_geometry(river2024TF))
 tointerp<- river2024TF %>% 
   select(RESULT)
@@ -88,10 +101,4 @@ tointerp<- tointerp %>%
                           lat = sf::st_coordinates(.)[,2])
 
 bc<-bc_bound()
-library(gstat)
-f1<-as.formula(RESULT ~ lon +lat)
-var.smpl <- variogram(f1, data=tointerp, cutoff=1000000, width=89900)
 
-dat.fit  <- fit.variogram(var.smpl, fit.ranges = FALSE, fit.sills = FALSE,
-                          vgm(psill=22, model="Sph", range=590000, nugget=0))
-plot(var.smpl, dat.fit, xlim=c(0,1000000))
