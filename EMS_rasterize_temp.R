@@ -55,10 +55,26 @@ c25 <- c(
 
 barplot(table(tempSF$LOCATION_TYPE))
 
-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
+locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
   geom_point()+
   scale_color_manual(values = c25[1:length(unique(results$LOCATION_PURPOSE))])+
+  labs(color = "Purpose of \nlocation sample", x = "Date", y = "Temperature")+
+  theme(plot.title = element_text(size = rel(2), face = "bold"),
+        plot.subtitle = element_text(size = rel(1.8)),
+        legend.title = element_text(size = rel(1.8)),
+        legend.text = element_text(size = rel(1.2)),
+        legend.position = 'right',
+        panel.grid.major = element_blank(),
+        strip.text.x = element_text(size = rel(1.2),face = "bold"),
+        axis.text = element_text(size = rel(1.1)),
+        axis.title = element_text(size = rel(1.3), face = "bold")
+        )+
   facet_wrap( ~ LOCATION_TYPE, ncol = 3)
+ggsave("./images/locationSamples.png",locplot, height = 10, width = 12, units = "in")
+
+
+
+
 
 ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_TYPE)))+
   geom_point()+
