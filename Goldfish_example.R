@@ -23,7 +23,7 @@ d = grab_aq_occ_data('goldfish')
 # con = DBI::dbConnect(RSQLite::SQLite(), "../EMS/output/EMS.sqlite")
 
 proj_wd = getwd()
-onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/CNF/data/")
+onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/CNF/")
 
 setwd(onedrive_wd)
 
