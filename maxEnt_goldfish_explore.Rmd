@@ -141,7 +141,11 @@ elev_res = terra::resample(elev, pred_bioc_clipped)
 all_rasters = c(pred_bioc_clipped, NA_ph_res, NA_calc_res, elev_res)
 
 names(all_rasters)[c(1,12)] <- c("temp","precip")
+temps<-pred_bioc_clipped[[1]]
+precip<-pred_bioc_clipped[[2]]
 
+stack_data<-c(NA_ph_res, NA_calc_res, elev_res, temps, precip)
+names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
 
 ## how to decide the number of samples to be taken? Computational restraints.
 ## constraints of the raster being sampled from
@@ -286,6 +290,18 @@ corvif(Z[, c(-1,-6)])
 ```
 
 Removing elevation has dropped the VIF score of temperature.
+
+
+```{r maxent}
+
+modeldata<-samp[,4:8]
+pa<-samp$present
+library(dismo)
+maxentModel<-MaxEnt(x=modeldata, p = pa, path="./output/maxentresult", sep = " ")
+
+```
+
+
 
 ## Key questions about the structure of the model
 1. How does maxent do presence only? - it uses surrounding areas as background points
