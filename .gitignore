@@ -6,3 +6,4 @@ data/**
 *.Rproj
 CMI/**
 *.html
+images/**
