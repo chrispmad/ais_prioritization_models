@@ -149,7 +149,7 @@ temps<-pred_bioc_clipped[[1]]
 precip<-pred_bioc_clipped[[2]]
 
 stack_data<-c(NA_ph_res, NA_calc_res, elev_res, temps, precip)
-names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
+names(stack_data)<-c("pH", "calc", "elev", "temp", "precip")
 
 ## how to decide the number of samples to be taken? Computational restraints.
 ## constraints of the raster being sampled from
@@ -286,6 +286,11 @@ colnames(Z2)<-c("Present", "Temp", "Precip", "Calcium", "pH")
 pairs(Z2[,-1], lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
 ```
 
+```{r stepwise_aic_maybe}
+# Snag some sampled 
+# glm()
+
+```
 
 
 #### Variance inflation factors with no elevation
@@ -306,10 +311,14 @@ pa<-samp[,c("x", "y")]
 maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " ")
 
 # Splitting into preds and train portions
-
+set.seed(12345)
 fold <- folds(pa, k=5)
 pa_test <- pa[fold == 1, ]
 pa_train <- pa[fold != 1, ]
+
+# stack_data_all = stack_data
+stack_data = stack_data_all
+stack_data$pH <- NULL
 
 me <- MaxEnt(stack_data, pa_train)
 me
@@ -325,12 +334,36 @@ me_res = me_res |>
   tidyr::as_tibble() |> 
   dplyr::select(metric, value)
 
-me_res |> 
-  dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution")) |> 
-  knitr::kable()
+key_metrics = me_res |> 
+  dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
 
+vars_to_keep = key_metrics |> 
+  dplyr::filter(str_detect(metric, '.*perm.*')) |> 
+  dplyr::filter(value >= 2) |> 
+  dplyr::mutate(variable_names = str_extract(metric,".*(?=_perm)")) |> 
+  dplyr::pull(variable_names)
+
+if(length(vars_to_keep) < terra::nlyr(stack_data)){
+  reduced_stack_data = stack_data[[vars_to_keep]]
+  
+  me_rerun <- MaxEnt(reduced_stack_data, pa_train)
+  
+  me_rerun_res = me_rerun@results |> 
+    as.data.frame()
+  
+  me_rerun_res = me_rerun_res |> 
+    dplyr::mutate(metric = snakecase::to_snake_case(rownames(me_rerun_res))) |> 
+    dplyr::rename(value = V1) |> 
+    tidyr::as_tibble() |> 
+    dplyr::select(metric, value)
+  
+  rerun_key_metrics = me_rerun_res |> 
+    dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
+  
+  rerun_key_metrics
+}
 # Use MaxEnt model to predict to entire dataset
-r <- predict(me, stack_data) 
+r <- predict(me, stack_data)
 
 plot(r)
 
