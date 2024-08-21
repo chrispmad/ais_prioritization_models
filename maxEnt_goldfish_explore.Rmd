@@ -294,10 +294,40 @@ Removing elevation has dropped the VIF score of temperature.
 
 ```{r maxent}
 
-modeldata<-samp[,4:8]
-pa<-samp$present
+rastersModel<-raster::stack(stack_data)
+
+pa<-samp[,c("x", "y")]
 library(dismo)
-maxentModel<-MaxEnt(x=modeldata, p = pa, path="./output/maxentresult", sep = " ")
+maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " ")
+
+
+
+
+
+```
+
+```{r model_exploration}
+#https://cran.r-project.org/web/packages/MIAmaxent/vignettes/a-modeling-example.html#exploring-the-model
+#https://plantarum.ca/notebooks/maxent/
+library(ENMeval)
+library(rmaxent)
+maxentModel@results
+summary(maxentModel)
+maxentModel@lambdas # contribution of each variable to the model - relative importance
+
+parse_lambdas(maxentModel)
+
+```
+
+
+
+```{r maxent_predictions}
+
+modelPredict<-predict(maxentModel, stack_data)
+plot(modelPredict)
+plot(st_geometry(d), pch = 3, col = "red", add = T)
+
+
 
 ```
 
