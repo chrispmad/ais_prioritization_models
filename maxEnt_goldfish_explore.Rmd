@@ -135,8 +135,6 @@ plot(elev, main = "Province elevation")
 ```
 
 ```{r fixing_data}
-
-
 NA_ph_res = terra::resample(ph_clipped, pred_bioc_clipped)
 NA_calc_res = terra::resample(calc_clipped, pred_bioc_clipped)
 
@@ -151,6 +149,18 @@ precip<-pred_bioc_clipped[[2]]
 stack_data<-c(NA_ph_res, NA_calc_res, elev_res, temps, precip)
 names(stack_data)<-c("pH", "calc", "elev", "temp", "precip")
 
+# Trim away bits outside of watercourses.
+watercourses = terra::rast(paste0(onedrive_wd,"stream_density_6_plus_order_raster.tif")) |> 
+  terra::project("EPSG:4326") |> 
+  terra::resample(pred_bioc_clipped) |> 
+  terra::mask(bc_vect)
+
+# terra::plot(watercourses)
+
+# stack_data = terra::mask(stack_data, watercourses)
+
+# terra::plot(stack_data$calc)
+# terra::plot(d, add = T)
 ## how to decide the number of samples to be taken? Computational restraints.
 ## constraints of the raster being sampled from
 # random_sample = spatSample(x = pred_bioc_clipped,
@@ -312,16 +322,30 @@ maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " 
 
 # Splitting into preds and train portions
 set.seed(12345)
-fold <- folds(pa, k=5)
-pa_test <- pa[fold == 1, ]
-pa_train <- pa[fold != 1, ]
+
+# Sample watercourses' locations for a collection of pseudoabsences; combine with data and then split into testing and training.
+bg<-randomPoints(raster::raster(watercourses), n = 5000) %>% 
+  as.data.frame()
+
+# plot(watercourses)
+# points(bg, pch = 3, col = "black")
+
+pa_all = dplyr::bind_rows(
+  pa |> dplyr::mutate(type = 'presence'),
+  bg |> dplyr::mutate(type = 'pseudoabsence')
+)
+
+fold <- folds(pa_all, k=5)
+pa_test <- pa_all[fold == 1, ]
+pa_train <- pa_all[fold != 1, ]
 
 # stack_data_all = stack_data
-stack_data = stack_data_all
-stack_data$pH <- NULL
+# stack_data = stack_data_all
+# stack_data$pH <- NULL
 
-me <- MaxEnt(stack_data, pa_train)
+me <- MaxEnt(stack_data, p = pa, a = bg)
 me
+
 
 # Check out results - this dataframe could be simplified to just hone in 
 # on the particular metrics we are curious about!
@@ -362,14 +386,19 @@ if(length(vars_to_keep) < terra::nlyr(stack_data)){
   
   rerun_key_metrics
 }
+
 # Use MaxEnt model to predict to entire dataset
 r <- predict(me, stack_data)
 
-plot(r)
+terra::plot(r)
+points(pa, col = 'green')
+points(bg, col = alpha('purple', 0.4), pch = 3)
 
+ggplot() + 
+  tidyterra::
 #testing
 # background sample
-bg <- backgroundSample(stack_data, 1000)
+# bg <- backgroundSample(stack_data, 1000)
 
 #simplest way to use 'evaluate'
 e1 <- pa_evaluate(me, p=pa_test, a=bg, x=stack_data)
