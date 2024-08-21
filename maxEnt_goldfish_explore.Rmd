@@ -23,6 +23,8 @@ library(sf)
 library(geodata)
 library(predicts)
 library(ggpubr)
+library(dismo)
+library(rJava)
 source("ZuurFuncs.R")
 #set locations
 proj_wd = getwd()
@@ -55,8 +57,10 @@ Elevation ----
 
 ```{r data_collection, echo=FALSE}
 sppOI<-"goldfish"
-# Get occurrence data for species.
-d = suppressMessages(grab_aq_occ_data(sppOI))
+# Get occurrence data for species (if we haven't done this yet!)
+if(!exists("d")){
+  d = suppressMessages(grab_aq_occ_data(sppOI))
+}
 # Pull in climate variables
 ph_NAM = terra::rast(paste0(onedrive_wd,"ph-KR-208784-median_10km_ZN.tif")) |> terra::project("EPSG:4326")
 names(ph_NAM) <- "pH"
@@ -297,13 +301,22 @@ Removing elevation has dropped the VIF score of temperature.
 rastersModel<-raster::stack(stack_data)
 
 pa<-samp[,c("x", "y")]
-library(dismo)
+
+
 maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " ")
 
+# Splitting into preds and train portions
 
+fold <- folds(pa, k=5)
+pa_test <- pa[fold == 1, ]
+pa_train <- pa[fold != 1, ]
 
+me <- MaxEnt(stack_data, pa_train)
+me
 
-
+# Check out results - this dataframe could be simplified to just hone in 
+# on the particular metrics we are curious about!
+me@results
 ```
 
 ```{r model_exploration}
