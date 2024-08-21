@@ -1,11 +1,20 @@
 prep_predictor_data = function(proj_path,
                                onedrive_path){
   
+  print("Reading in rasters...")
+  
+  # Make {terra} vector of BC.
+  bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
+  
   # Pull in climate variables
   ph_NAM = terra::rast(paste0(onedrive_path,"ph-KR-208784-median_10km_ZN.tif")) |> terra::project("EPSG:4326")
   names(ph_NAM) <- "pH"
   Calc_NAM = terra::rast(paste0(onedrive_path,"calcium-KR-97648-median-10km-ZN.tif")) |> terra::project("EPSG:4326")
   names(Calc_NAM) <- "calc"
+  
+  # Pull in distance to road network
+  roads = terra::rast(paste0(onedrive_path,"distance_to_road_raster.tif"))
+  names(roads) <- "dist_to_highways"
   
   # Read in variable names for the worldclim variables.
   renames<-c("Annual Mean Temperature", 
@@ -31,14 +40,8 @@ prep_predictor_data = function(proj_path,
   
   cmidata<-geodata::cmip6_world("ACCESS-CM2", ssp = "585", var = "bioc", res = 5, time = "2021-2040",path= paste0(proj_path,"/CMI/"))
   names(cmidata)<-renames
-  pred_bioc = terra::rast(paste0(proj_path,"/CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif"))
-  names(pred_bioc)<-renames
-  
-  # Cut our rasters down to just BC.
-  bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-  ph_clipped = terra::mask(terra::crop(ph_NAM, bc_vect), bc_vect)
-  calc_clipped = terra::mask(terra::crop(Calc_NAM, bc_vect), bc_vect)
-  pred_bioc_clipped = terra::mask(terra::crop(pred_bioc, bc_vect), bc_vect)
+  # pred_bioc = terra::rast(paste0(proj_path,"/CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif"))
+  # names(pred_bioc)<-renames
   
   # Pull in elevation raster with {elevatr}
   elev = suppressMessages(elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 4)) |>
@@ -47,19 +50,25 @@ prep_predictor_data = function(proj_path,
     terra::mask(bc_vect)
   names(elev) = "elev"
   
-  NA_ph_res = terra::resample(ph_clipped, pred_bioc_clipped)
-  NA_calc_res = terra::resample(calc_clipped, pred_bioc_clipped)
+  print("Combining rasters...")
   
-  elev_res = terra::resample(elev, pred_bioc_clipped)
+  rasters = list(cmidata$Annual_Mean_Temperature,
+                 cmidata$Annual_Precipitation,
+                 ph_NAM,Calc_NAM,roads,elev)
   
-  all_rasters = c(pred_bioc_clipped, NA_ph_res, NA_calc_res, elev_res)
+  # Cut our rasters down to just BC.
+  rasters = rasters |> 
+    lapply(\(x) {
+      terra::mask(terra::crop(x, bc_vect), bc_vect)
+    })
   
-  names(all_rasters)[c(1,12)] <- c("temp","precip")
-  temps<-pred_bioc_clipped[[1]]
-  precip<-pred_bioc_clipped[[2]]
+  # Resample to ensure same resolution as bioclim variables.
+  rasters = rasters |> 
+    lapply(\(x) {
+      terra::resample(x, rasters[[1]])
+    })
   
-  stack_data<-c(NA_ph_res, NA_calc_res, elev_res, temps, precip)
-  names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
+  rasters_c = Reduce(x = rasters, f = 'c')
   
-  return(stack_data)
+  return(rasters_c)
 }
