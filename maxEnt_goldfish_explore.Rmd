@@ -316,7 +316,34 @@ me
 
 # Check out results - this dataframe could be simplified to just hone in 
 # on the particular metrics we are curious about!
-me@results
+me_res = me@results |> 
+  as.data.frame()
+
+me_res = me_res |> 
+  dplyr::mutate(metric = snakecase::to_snake_case(rownames(me_res))) |> 
+  dplyr::rename(value = V1) |> 
+  tidyr::as_tibble() |> 
+  dplyr::select(metric, value)
+
+me_res |> 
+  dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution")) |> 
+  knitr::kable()
+
+# Use MaxEnt model to predict to entire dataset
+r <- predict(me, stack_data) 
+
+plot(r)
+
+#testing
+# background sample
+bg <- backgroundSample(stack_data, 1000)
+
+#simplest way to use 'evaluate'
+e1 <- pa_evaluate(me, p=pa_test, a=bg, x=stack_data)
+
+e1
+
+plot(e1, 'ROC')
 ```
 
 ```{r model_exploration}
