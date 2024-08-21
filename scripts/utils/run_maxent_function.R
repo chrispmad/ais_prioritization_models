@@ -22,4 +22,8 @@ run_maxent = function(species,
   samp$pH = terra::extract(ph_clipped, samp[,c("x","y")], ID = FALSE)
   samp$elev = terra::extract(elev, samp[,c("x","y")], ID = FALSE)
   samp = as.data.frame(samp)
+  
+  # Run the maxent model here
+  
+  # Clean up the results; export a list of results.
 }
