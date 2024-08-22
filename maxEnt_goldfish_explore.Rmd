@@ -316,9 +316,9 @@ Removing elevation has dropped the VIF score of temperature.
 rastersModel<-raster::stack(stack_data)
 
 pa<-samp[,c("x", "y")]
-
-
-maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " ")
+# pa<-sampledData
+# names(pa)<-c("x", "y")
+#maxentModel<-MaxEnt(x=stack_data, p = pa, path="./output/maxentresult", sep = " ")
 
 # Splitting into preds and train portions
 set.seed(12345)
@@ -334,7 +334,7 @@ pa_all = dplyr::bind_rows(
   pa |> dplyr::mutate(type = 'presence'),
   bg |> dplyr::mutate(type = 'pseudoabsence')
 )
-
+head(pa_all)
 fold <- folds(pa_all, k=5)
 pa_test <- pa_all[fold == 1, ]
 pa_train <- pa_all[fold != 1, ]
