@@ -58,3 +58,8 @@ plot2 <- ggplot(thinned_data_full[[6]]) +
   geom_point(aes(x = Longitude, y = Latitude), color = "purple", shape = 2)
 
 plot1 / plot2
+
+sampledData<-thinned_data_full[[6]]
+
+
+
