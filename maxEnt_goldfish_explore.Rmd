@@ -417,7 +417,7 @@ maxentModel@results
 summary(maxentModel)
 maxentModel@lambdas # contribution of each variable to the model - relative importance
 
-parse_lambdas(maxentModel)
+
 
 ```
 
