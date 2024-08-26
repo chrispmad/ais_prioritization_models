@@ -9,22 +9,27 @@ library(automap)
 library(gstat)
 library(stringr)
 
+variable_to_search <- "Temperature"
+year_to_search<-2023
+
 path_to_user = str_extract(getwd(), ".*Users/[A-Z]+")
 onedrive_path = paste0(path_to_user,"/OneDrive - Government of BC/data/CNF/")
 
+bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
+bc_vect_alb = terra::vect(sf::st_transform(bcmaps::bc_bound(),3005))
 
 conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
 
 dbListTables(conn) # list the table(s)
 
-test1<-dbGetQuery(conn, "select * from results where parameter like '%Temperature%'")
+test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",variable_to_search,"%'"))
 
 # pH <-dbGetQuery(conn, "select * from results where parameter like 'pH' and strftime('&Y', COLLECTION_DATE) >= 2022")
 
 ##date column - collection start and collection end - if need date specific - convert back to datetime
 
-class(test1)
-str(test1)
+# class(test1)
+# str(test1)
 
 test1<-test1[!is.na(test1$LATITUDE),]
 test1<-test1[!is.na(test1$LONGITUDE),]
@@ -38,17 +43,18 @@ tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
 class(tempSF$COLLECTION_DATE[1])
 summary(tempSF$COLLECTION_DATE)
 
-temp2024<-tempSF[tempSF$COLLECTION_DATE >= "2020-01-01" & tempSF$COLLECTION_DATE < "2024-01-01",]
+temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") & tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),]
 
-results<-temp2024 %>% 
+
+### Increase the number of location types!
+results<-temp2024 %>%
   dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
   dplyr::filter(!is.na(RESULT)) %>% 
-  dplyr::group_by(LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry) %>% 
-  dplyr::mutate(medianVal = median(RESULT))
-
-results1<-results %>%
-  group_by_all() %>%
-  distinct(geometry)
+  dplyr::filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK" |
+                LOCATION_TYPE == "MONITORING WELL" |
+                LOCATION_TYPE == "LAKE OR POND") %>% 
+  dplyr::group_by(MONITORING_LOCATION) %>% 
+  dplyr::summarise(medianVal = median(RESULT))
 
 
 
@@ -89,17 +95,13 @@ locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.
   facet_wrap( ~ LOCATION_TYPE, ncol = 3)
 #ggsave("./images/locationSamples.png",locplot, height = 10, width = 12, units = "in")
 
-
-
-
-
 # ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_TYPE)))+
 #   geom_point()+
 #   scale_color_manual(values = c25[1:length(unique(results$LOCATION_TYPE))])+
 #   facet_wrap( ~ LOCATION_PURPOSE, ncol = 3)
 
-river2024<- results %>% 
-  filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK")
+river2024<- results #%>% 
+  #filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK")
 
 
 
@@ -118,18 +120,23 @@ p1<-ggplot()+
 #ggsave("./images/monitoringlocs.png",p1, height = 400, units = "cm", limitsize = F)
 
 # How many monitoring locations have 3 or more data points in 2024?
-river2024_data_rich = river2024 |> 
-  dplyr::group_by(MONITORING_LOCATION) |> 
-  dplyr::mutate(number_datapoints = n()) |> 
-  dplyr::ungroup() |> 
-  dplyr::filter(number_datapoints >= 3)
+# river2024_data_rich = river2024 |> 
+#   dplyr::group_by(MONITORING_LOCATION) |> 
+#   dplyr::mutate(number_datapoints = n()) |> 
+#   dplyr::ungroup() |> 
+#   dplyr::filter(number_datapoints >= 3)
+river2024_data_rich<-river2024
 
 river2024TF<-st_transform(river2024_data_rich, 3005)
 # plot(st_geometry(river2024TF))
+
 tointerp<- river2024TF %>% 
   dplyr::select(RESULT, medianVal)
+tointerp<- river2024TF
+#calculate the centroid, as some of the geoms are different. Just want a point
+tointerpPt<-st_centroid(tointerp)
 
-tointerp<- tointerp %>% 
+tointerpPt<- tointerpPt %>% 
             dplyr::mutate(lon = sf::st_coordinates(.)[,1],
                           lat = sf::st_coordinates(.)[,2])
 
@@ -169,9 +176,7 @@ plot(varKRVar)
 #interpolation model
 KRvarmod <- gstat(formula=medianVal~1,
                  locations=as(tointerp,"Spatial"),
-                 model=varKRVar$var_model,
-                 nmax=100,
-                 nmin=15)
+                 model=varKRVar$var_model)
 KRvarmod
 #interpolation - using gstat::predict (more complex to parallelise, so is single-thread here for simplicity - but produces variance map)
 KRgrid10km <- as(grid10km, "SpatialGrid")
@@ -179,7 +184,14 @@ KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
 
 #convert output to rasters and save 
 KRVar_interpolation_raster <- raster(KRVar_interpolation) 
-KRVar_interpolation_raster
-#KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
-
 plot(KRVar_interpolation_raster)
+
+spatRast<-rast(KRVar_interpolation_raster)
+
+#KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
+KrigRast<-terra::crop(spatRast, bc_vect_alb)
+KrigRast<-terra::mask(spatRast, bc_vect_alb)
+
+plot(KrigRast)
+
+writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"))
