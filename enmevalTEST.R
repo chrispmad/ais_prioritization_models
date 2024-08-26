@@ -15,7 +15,7 @@ source("ZuurFuncs.R")
 
 
 proj_wd = getwd()
-onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/CNF/data/")
+onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/CNF/")
 
 sppOI<-"goldfish"
 # Get occurrence data for species.
