@@ -194,4 +194,4 @@ KrigRast<-terra::mask(spatRast, bc_vect_alb)
 
 plot(KrigRast)
 
-writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"))
+writeRaster(KrigRast, paste0("./output/Raster/Krig_",variable_to_search,"_",year_to_search,".tif"))
