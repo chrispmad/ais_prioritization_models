@@ -56,7 +56,7 @@ all_rasters = c(pred_bioc_clipped, NA_ph_res, NA_calc_res, elev_res)
 
 names(all_rasters)[c(1,12)] <- c("temp","precip")
 temps<-pred_bioc_clipped[[1]]
-precip<-pred_bioc_clipped[[2]]
+precip<-pred_bioc_clipped[[12]]
 
 stack_data<-c(NA_ph_res, NA_calc_res, elev_res, temps, precip)
 names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
@@ -64,7 +64,7 @@ names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
 plot(stack_data[[4]], main = "Temperature Raster")
 points(d)
 baseRast<-raster(stack_data[[4]])
-baseRast<-setValues(baseRast, -1)
+baseRast[]<- -1
 bg<- dismo::randomPoints(baseRast, n = 5000) %>% 
   as.data.frame()
 plot(baseRast)
