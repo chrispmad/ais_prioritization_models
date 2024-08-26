@@ -12,6 +12,7 @@ library(predicts)
 library(ggpubr)
 library(ENMeval)
 source("ZuurFuncs.R")
+library(dismo)
 
 
 proj_wd = getwd()
@@ -63,8 +64,8 @@ names(stack_data)<-c("pH", "Calc", "elev", "temp", "precip")
 plot(stack_data[[4]], main = "Temperature Raster")
 points(d)
 baseRast<-raster(stack_data[[4]])
-baseRast<-setValues(-1)
-bg<-randomPoints(baseRast, n = 5000) %>% 
+baseRast<-setValues(baseRast, -1)
+bg<- dismo::randomPoints(baseRast, n = 5000) %>% 
   as.data.frame()
 plot(baseRast)
 points(bg, pch = 3, col = "black")
@@ -84,8 +85,5 @@ pa_all = dplyr::bind_rows(
   samp |> dplyr::mutate(type = 1),
   bg |> dplyr::mutate(type = 0)
 )
-
-
-
 
 modeltest<-ENMevaluate(occs = samp, envs = stack_data, bg = bg, algorithm = "maxent", partitions = "block")
