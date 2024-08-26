@@ -43,10 +43,10 @@ temp2024<-tempSF[tempSF$COLLECTION_DATE >= "2020-01-01" & tempSF$COLLECTION_DATE
 results<-temp2024 %>% 
   dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
   dplyr::filter(!is.na(RESULT)) %>% 
-  dplyr::group_by(geometry) %>% 
+  dplyr::group_by(LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry) %>% 
   dplyr::mutate(medianVal = median(RESULT))
 
-results<-results %>%
+results1<-results %>%
   group_by_all() %>%
   distinct(geometry)
 
