@@ -28,8 +28,8 @@ test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",v
 
 ##date column - collection start and collection end - if need date specific - convert back to datetime
 
-# class(test1)
-# str(test1)
+class(test1)
+str(test1)
 
 test1<-test1[!is.na(test1$LATITUDE),]
 test1<-test1[!is.na(test1$LONGITUDE),]
@@ -133,7 +133,7 @@ river2024TF<-st_transform(river2024_data_rich, 3005)
 tointerp<- river2024TF %>% 
   dplyr::select(RESULT, medianVal)
 tointerp<- river2024TF
-#calculate the centroid, as some of the geoms are different. Just want a point
+#calculate the centroid, as some of the geoms are different. 
 tointerpPt<-st_centroid(tointerp)
 
 tointerpPt<- tointerpPt %>% 
@@ -176,7 +176,9 @@ plot(varKRVar)
 #interpolation model
 KRvarmod <- gstat(formula=medianVal~1,
                  locations=as(tointerp,"Spatial"),
-                 model=varKRVar$var_model)
+                 model=varKRVar$var_model,
+                 nmax=500,
+                 nmin=5)
 KRvarmod
 #interpolation - using gstat::predict (more complex to parallelise, so is single-thread here for simplicity - but produces variance map)
 KRgrid10km <- as(grid10km, "SpatialGrid")
@@ -189,9 +191,12 @@ plot(KRVar_interpolation_raster)
 spatRast<-rast(KRVar_interpolation_raster)
 
 #KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
+
+### is this the one to save? Or not clipped and masked? I don't see why we would need
+# it without being clipped and masked...
 KrigRast<-terra::crop(spatRast, bc_vect_alb)
 KrigRast<-terra::mask(spatRast, bc_vect_alb)
 
 plot(KrigRast)
 
-writeRaster(KrigRast, paste0("./output/Raster/Krig_",variable_to_search,"_",year_to_search,".tif"))
+writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"))
