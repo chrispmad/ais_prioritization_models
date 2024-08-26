@@ -413,9 +413,9 @@ plot(e1, 'ROC')
 #https://plantarum.ca/notebooks/maxent/
 library(ENMeval)
 library(rmaxent)
-maxentModel@results
-summary(maxentModel)
-maxentModel@lambdas # contribution of each variable to the model - relative importance
+me@results
+summary(me)
+me@lambdas # contribution of each variable to the model - relative importance
 
 
 
@@ -425,7 +425,7 @@ maxentModel@lambdas # contribution of each variable to the model - relative impo
 
 ```{r maxent_predictions}
 
-modelPredict<-predict(maxentModel, stack_data)
+modelPredict<-predict(me, stack_data)
 plot(modelPredict)
 plot(st_geometry(d), pch = 3, col = "red", add = T)
 
