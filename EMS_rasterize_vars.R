@@ -9,6 +9,7 @@ library(automap)
 library(gstat)
 library(stringr)
 library(terra)
+library(raster)
 
 variable_to_search <- "Temperature"
 year_to_search<-2023
@@ -44,10 +45,10 @@ tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
 #class(tempSF$COLLECTION_DATE[1])
 #summary(tempSF$COLLECTION_DATE)
 
-temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") & 
-                   tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>% 
+temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search-2),"-01-01") &
+                   tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>%
           filter(!is.na(MONITORING_LOCATION))
-
+#temp2024<-tempSF
 
 ### Increase the number of location types!
 results<-temp2024 %>%
@@ -167,7 +168,6 @@ st_crs(grid10km)
 ## nugget is y intercept; range is the point wher the variogram levels off; sill is the total
 ## level where the empirical variogram appears to level off. 
 varKRVar <- autofitVariogram(medianVal ~ 1, 
-                             model = c("Sph", "Exp", "Gau", "Mat", "Ste"),
                             as(tointerp, "Spatial"),
                             verbose=TRUE,
                             fix.values = c(NA,NA,NA))
@@ -179,13 +179,16 @@ plot(varKRVar)
 #interpolation model
 KRvarmod <- gstat(formula=medianVal~1,
                  locations=as(tointerp,"Spatial"),
-                 model=varKRVar$var_model)
+                 model=varKRVar$var_model,
+                 nmax = 5,
+                 nmin = 1)
 KRvarmod
 #interpolation - using gstat::predict (more complex to parallelise, so is single-thread here for simplicity - but produces variance map)
 KRgrid10km <- as(grid10km, "SpatialGrid")
 #KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
 
 
+# bc_rast<-rasterize(as.data.frame(bc_vect),grid10km)
 
 library(snow)
 beginCluster(n = 6)
@@ -207,5 +210,6 @@ KrigRast<-terra::crop(KrigRast, bc_vect_alb)
 KrigRast<-terra::mask(KrigRast, bc_vect_alb)
 
 plot(KrigRast)
+plot(tointerp, add = T)
 
 writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"), overwrite = T)
