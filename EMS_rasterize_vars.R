@@ -170,7 +170,7 @@ st_crs(grid10km)
 varKRVar <- autofitVariogram(medianVal ~ 1, 
                             as(tointerp, "Spatial"),
                             verbose=TRUE,
-                            fix.values = c(NA,NA,NA))
+                            fix.values = c(0,NA,NA))
 
 # Is this a good variogram? https://hydroecology.net/know-your-variograms/
 plot(varKRVar)
@@ -179,35 +179,34 @@ plot(varKRVar)
 #interpolation model
 KRvarmod <- gstat(formula=medianVal~1,
                  locations=as(tointerp,"Spatial"),
-                 model=varKRVar$var_model,
-                 nmax = 5,
-                 nmin = 1)
+                 model=varKRVar$var_model
+                 )
 KRvarmod
 #interpolation - using gstat::predict (more complex to parallelise, so is single-thread here for simplicity - but produces variance map)
 KRgrid10km <- as(grid10km, "SpatialGrid")
-#KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
+KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
 
 
 # bc_rast<-rasterize(as.data.frame(bc_vect),grid10km)
 
-library(snow)
-beginCluster(n = 6)
-KRca_interpolation_raster_mt <- clusterR(grid10km, interpolate, args=list(KRvarmod))
-plot(KRca_interpolation_raster_mt)
-endCluster()
+# library(snow)
+# beginCluster(n = 6)
+# KRca_interpolation_raster_mt <- clusterR(grid10km, interpolate, args=list(KRvarmod))
+# plot(KRca_interpolation_raster_mt)
+# endCluster()
 
 # #convert output to rasters and save 
-# KRVar_interpolation_raster <- raster(KRVar_interpolation) 
-# #plot(KRVar_interpolation_raster)
-# 
-# spatRast<-rast(KRVar_interpolation_raster)
+KRVar_interpolation_raster <- raster(KRVar_interpolation) 
+plot(KRVar_interpolation_raster)
+
+spatRast<-rast(KRVar_interpolation_raster)
 
 #KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
-KrigRast<-terra::rast(KRca_interpolation_raster_mt)
+#KrigRast<-terra::rast(KRca_interpolation_raster_mt)
 ### is this the one to save? Or not clipped and masked? I don't see why we would need
 # it without being clipped and masked...
-KrigRast<-terra::crop(KrigRast, bc_vect_alb)
-KrigRast<-terra::mask(KrigRast, bc_vect_alb)
+# KrigRast<-terra::crop(KRVar_interpolation_raster, bc_vect)
+# KrigRast<-terra::mask(KrigRast, bc_vect_alb)
 
 plot(KrigRast)
 plot(tointerp, add = T)
