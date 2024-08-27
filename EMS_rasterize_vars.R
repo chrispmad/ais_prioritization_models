@@ -8,6 +8,7 @@ library(raster)
 library(automap)
 library(gstat)
 library(stringr)
+library(terra)
 
 variable_to_search <- "Temperature"
 year_to_search<-2023
@@ -20,7 +21,7 @@ bc_vect_alb = terra::vect(sf::st_transform(bcmaps::bc_bound(),3005))
 
 conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
 
-dbListTables(conn) # list the table(s)
+#dbListTables(conn) # list the table(s)
 
 test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",variable_to_search,"%'"))
 
@@ -40,10 +41,12 @@ tempSF<-st_as_sf(test1, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
 #   geom_sf(data = tempSF)
 
 tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
-class(tempSF$COLLECTION_DATE[1])
-summary(tempSF$COLLECTION_DATE)
+#class(tempSF$COLLECTION_DATE[1])
+#summary(tempSF$COLLECTION_DATE)
 
-temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") & tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),]
+temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") & 
+                   tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>% 
+          filter(!is.na(MONITORING_LOCATION))
 
 
 ### Increase the number of location types!
@@ -78,21 +81,21 @@ c25 <- c(
 
 # barplot(table(tempSF$LOCATION_TYPE))
 
-locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
-  geom_point()+
-  scale_color_manual(values = c25[1:length(unique(results$LOCATION_PURPOSE))])+
-  labs(color = "Purpose of \nlocation sample", x = "Date", y = "Temperature")+
-  theme(plot.title = element_text(size = rel(2), face = "bold"),
-        plot.subtitle = element_text(size = rel(1.8)),
-        legend.title = element_text(size = rel(1.8)),
-        legend.text = element_text(size = rel(1.2)),
-        legend.position = 'right',
-        panel.grid.major = element_blank(),
-        strip.text.x = element_text(size = rel(1.2),face = "bold"),
-        axis.text = element_text(size = rel(1.1)),
-        axis.title = element_text(size = rel(1.3), face = "bold")
-        )+
-  facet_wrap( ~ LOCATION_TYPE, ncol = 3)
+# locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
+#   geom_point()+
+#   scale_color_manual(values = c25[1:length(unique(results$LOCATION_PURPOSE))])+
+#   labs(color = "Purpose of \nlocation sample", x = "Date", y = "Temperature")+
+#   theme(plot.title = element_text(size = rel(2), face = "bold"),
+#         plot.subtitle = element_text(size = rel(1.8)),
+#         legend.title = element_text(size = rel(1.8)),
+#         legend.text = element_text(size = rel(1.2)),
+#         legend.position = 'right',
+#         panel.grid.major = element_blank(),
+#         strip.text.x = element_text(size = rel(1.2),face = "bold"),
+#         axis.text = element_text(size = rel(1.1)),
+#         axis.title = element_text(size = rel(1.3), face = "bold")
+#         )+
+#   facet_wrap( ~ LOCATION_TYPE, ncol = 3)
 #ggsave("./images/locationSamples.png",locplot, height = 10, width = 12, units = "in")
 
 # ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_TYPE)))+
@@ -130,10 +133,10 @@ river2024_data_rich<-river2024
 river2024TF<-st_transform(river2024_data_rich, 3005)
 # plot(st_geometry(river2024TF))
 
-tointerp<- river2024TF %>% 
-  dplyr::select(RESULT, medianVal)
+# tointerp<- river2024TF %>% 
+#   dplyr::select(RESULT, medianVal)
 tointerp<- river2024TF
-#calculate the centroid, as some of the geoms are different. Just want a point
+#calculate the centroid, as some of the geoms are different. 
 tointerpPt<-st_centroid(tointerp)
 
 tointerpPt<- tointerpPt %>% 
@@ -180,18 +183,29 @@ KRvarmod <- gstat(formula=medianVal~1,
 KRvarmod
 #interpolation - using gstat::predict (more complex to parallelise, so is single-thread here for simplicity - but produces variance map)
 KRgrid10km <- as(grid10km, "SpatialGrid")
-KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
+#KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
 
-#convert output to rasters and save 
-KRVar_interpolation_raster <- raster(KRVar_interpolation) 
-plot(KRVar_interpolation_raster)
 
-spatRast<-rast(KRVar_interpolation_raster)
+
+library(snow)
+beginCluster(n = 6)
+KRca_interpolation_raster_mt <- clusterR(grid10km, interpolate, args=list(KRvarmod))
+plot(KRca_interpolation_raster_mt)
+endCluster()
+
+# #convert output to rasters and save 
+# KRVar_interpolation_raster <- raster(KRVar_interpolation) 
+# #plot(KRVar_interpolation_raster)
+# 
+# spatRast<-rast(KRVar_interpolation_raster)
 
 #KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
-KrigRast<-terra::crop(spatRast, bc_vect_alb)
-KrigRast<-terra::mask(spatRast, bc_vect_alb)
+KrigRast<-terra::rast(KRca_interpolation_raster_mt)
+### is this the one to save? Or not clipped and masked? I don't see why we would need
+# it without being clipped and masked...
+KrigRast<-terra::crop(KrigRast, bc_vect_alb)
+KrigRast<-terra::mask(KrigRast, bc_vect_alb)
 
 plot(KrigRast)
 
-writeRaster(KrigRast, paste0("./output/Raster/Krig_",variable_to_search,"_",year_to_search,".tif"))
+writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"), overwrite = T)
