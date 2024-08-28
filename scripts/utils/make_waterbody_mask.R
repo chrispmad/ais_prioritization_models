@@ -60,8 +60,12 @@ streams = list.files(path = paste0(onedrive_path,"fwa_streams/"),
   dplyr::bind_rows()
 
 # Try this with a much smaller number of streams!
-ref_albers = terra::project(ref, "EPSG:3005")
-terra::plot(ref_albers)
+terra::plot(ref)
+ref_more_detailed = terra::disagg(ref, 10)
+ref
+ref_more_detailed
+ref_albers = terra::project(ref_more_detailed, "EPSG:3005")
+
 streams_r = terra::rasterize(streams, #|> 
                                #dplyr::filter(STREAM_ORDER >= 8), #|> 
                                # dplyr::group_by(FWA_WATERSHED_CODE,STREAM_ORDER) |> 
@@ -72,5 +76,5 @@ streams_r = terra::rasterize(streams, #|>
 terra::plot(streams_r)
 
 # Write to OneDrive!
-terra::writeRaster(streams_r,paste0(onedrive_path,"fwa_streams/stream_order_three_plus_raster.tif"), overwrite = TRUE)
-terra::writeRaster(streams_r,paste0(onedrive_path,"CNF/stream_order_three_plus_raster.tif"), overwrite = TRUE)
+terra::writeRaster(streams_r,paste0(onedrive_path,"fwa_streams/stream_order_three_plus_raster_1km_res.tif"), overwrite = TRUE)
+terra::writeRaster(streams_r,paste0(onedrive_path,"CNF/stream_order_three_plus_raster_1km_res.tif"), overwrite = TRUE)
