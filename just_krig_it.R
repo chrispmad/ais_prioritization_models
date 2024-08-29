@@ -54,12 +54,13 @@ results <- varSF_filt_date %>%
   dplyr::group_by(MONITORING_LOCATION) %>%
   dplyr::summarise(medianVal = median(RESULT))
 
+
 highvals<-results %>% 
   dplyr::filter(medianVal >20)
 
 
 
-plotting <- varSF_filt_date[varSF_filt_date$MONITORING_LOCATION %in% results$MONITORING_LOCATION,]
+plotting <- varSF_filt_date[varSF_filt_date$MONITORING_LOCATION %in% highvals$MONITORING_LOCATION,]
 
 p1<-ggplot(plotting, aes(x = COLLECTION_DATE, y = RESULT, color = MONITORING_LOCATION)) +
   geom_point() +
@@ -67,10 +68,15 @@ p1<-ggplot(plotting, aes(x = COLLECTION_DATE, y = RESULT, color = MONITORING_LOC
   labs(title = "Result vs. Collection Date by Monitoring Location",
        x = "Collection Date",
        y = "Result") +
+  theme(legend.position = "none")+
   facet_wrap(~ MONITORING_LOCATION, ncol = 5)
+p1
+ggsave(p1, filename = "./images/monitoringlocs.png")
 
-ggsave(p1, filename = "./images/monitoringlocs.png", height = 300,units = "cm", limitsize = F)
-
+p2<-ggplot()+
+  geom_sf(data = bc_vect, color = "lightgrey")+
+  geom_sf(data = plotting, aes(fill = MONITORING_LOCATION))
+p2  
 
 resultsalb<-st_transform(results, 3005)
 
@@ -111,3 +117,4 @@ v.f<-fit.variogram(v, vgm(1, "Exp", 50000,1))
 
 
 
+k <- krige(medianVal~1, tointerpPt, idwgrid, v.f)
