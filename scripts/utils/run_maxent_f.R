@@ -4,8 +4,9 @@ run_maxent = function(species,
                       onedrive_path,
                       seed = 12345,
                       number_pseudoabsences = 5000,
-                      number_folds = 5
-
+                      number_folds = 5,
+                      habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
+                      
 ){
   
   if(!is.null(seed)) set.seed(seed)
@@ -39,12 +40,11 @@ run_maxent = function(species,
   
   # Make {terra} vector of BC.
   bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-  
-  # Bring in watercourses to constrain randomly sampled pseudoabsences to biologically meaningful locations
+    # Bring in watercourses to constrain randomly sampled pseudoabsences to biologically meaningful locations
   # for aquatic organisms.
-  watercourses = terra::rast(paste0(onedrive_path,"stream_density_6_plus_order_raster.tif")) |> 
-    terra::project("EPSG:4326") |> 
-    terra::resample(predictor_data[[1]]) |> 
+  # watercourses = terra::rast(paste0(onedrive_path,"stream_density_6_plus_order_raster.tif")) |> 
+  watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) |> 
+    # terra::resample(predictor_data[[1]]) |> 
     terra::mask(bc_vect)
   
   # If the user has specified a list of predictor variables to use, just keep those.
@@ -54,6 +54,7 @@ run_maxent = function(species,
   }
   
   print("Pulling predictor raster values for presence points...")
+  
   for(raster_var in unique(names(predictor_data))){
     dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
                                         dat[,c("x","y")], ID = FALSE)[[raster_var]]
@@ -64,7 +65,7 @@ run_maxent = function(species,
   # Remove samples lacking predictor raster values?
   keep_ind = complete.cases(dat_just_pred_vars)
   dat = dat[keep_ind,]
-
+  
   # Test collinearity
   # pred_vals = dat[,c(names(predictor_data))]
   
@@ -93,31 +94,7 @@ run_maxent = function(species,
     dplyr::ungroup() |> 
     # Filter using that alphabetical var name column; this prevents duplication of results.
     dplyr::filter(duplicated(variable_combo))
-    
-  # # For now, and this is arbitrary, remove the variables listed in 'var_2',
-  # # unless they are listed in the variables to keep.
-  # vars_to_drop = list()
-  # 
-  # for(i in 1:nrow(highly_correlated_vars)){
-  #   
-  #   var_1 = highly_correlated_vars[i,]$name
-  #   var_2 = highly_correlated_vars[i,]$var_2
-  #   
-  #   if(var_1 %in% vars_to_use){
-  #     if(!var_2 %in% vars_to_use){
-  #       vars_to_drop[[i]] <- var_2
-  #     }
-  #   } else {
-  #     vars_to_drop[[i]] <- var_1
-  #   }
-  # }
-  # 
-  # vars_to_drop = unlist(vars_to_drop)
   
-  # # Drop one of each pair of highly correlated variables from the point data
-  # # and the predictor variable raster set.
-  # dat = dat |> dplyr::select(-dplyr::all_of(vars_to_drop))
- 
   # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
   predictor_data_low_cor = predictor_data
   
@@ -156,42 +133,10 @@ run_maxent = function(species,
     dplyr::select(metric, value)
   
   key_metrics = me_res |> 
-    dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
-  
-  # vars_to_keep = key_metrics |> 
-  #   dplyr::filter(str_detect(metric, '.*perm.*')) |> 
-  #   dplyr::filter(value >= 2) |> 
-  #   dplyr::mutate(variable_names = str_extract(metric,".*(?=_perm)")) |> 
-  #   dplyr::pull(variable_names)
-  # 
-  # if(length(vars_to_keep) < terra::nlyr(predictor_data_low_cor)){
-  #   
-  #   reduced_stack_data = predictor_data_low_cor[[vars_to_keep]]
-  #   
-  #   me_rerun <- MaxEnt(reduced_stack_data, pa_train)
-  #   
-  #   me_rerun_res = me_rerun@results |> 
-  #     as.data.frame()
-  #   
-  #   me_rerun_res = me_rerun_res |> 
-  #     dplyr::mutate(metric = snakecase::to_snake_case(rownames(me_rerun_res))) |> 
-  #     dplyr::rename(value = V1) |> 
-  #     tidyr::as_tibble() |> 
-  #     dplyr::select(metric, value)
-  #   
-  #   rerun_key_metrics = me_rerun_res |> 
-  #     dplyr::filter(metric %in% c("x_training_samples","training_auc") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
-  #   
-  #   rerun_key_metrics
-  # }
+    dplyr::filter(metric %in% c("x_training_samples","training_auc",habitat_threshold_var) | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
   
   # Use MaxEnt model to predict to entire dataset
   predictions <- predict(me, predictor_data_low_cor)
-  
-  # terra::plot(predictions)
-  # 
-  # points(pa, col = 'green')
-  # points(bg, col = alpha('purple', 0.4), pch = 3)
   
   pres_sf = sf::st_as_sf(presences, coords = c("x","y"), crs = 4326)
   absences_sf = sf::st_as_sf(pseudoabsences, coords = c("x","y"), crs = 4326)
@@ -219,29 +164,41 @@ run_maxent = function(species,
     scale_colour_manual(values = c('presence' = "red",
                                    'pseudoabsence' = "purple")) +
     scale_alpha_manual(values = c('presence' = 1,
-                                   'pseudoabsence' = 0.1)) +
+                                  'pseudoabsence' = 0.1)) +
     scale_fill_viridis_c() + 
     labs(title = paste0(stringr::str_to_title(species_name)),
          subtitle = paste0("Training Samples: ",train_samp,
                            "<br>",
-                           "Training Area-Under-Curve",train_auc),
+                           "Training Area-Under-Curve: ",train_auc),
          caption = metrics_caption) + 
     theme(
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
     )
-    
-    #simplest way to use 'evaluate'
-    e1 <- pa_evaluate(me, p=pa_test, a=pseudoabsences, x=predictor_data_low_cor)
+  
+  #simplest way to use 'evaluate'
+  e1 <- pa_evaluate(me, p=pa_test, a=pseudoabsences, x=predictor_data_low_cor)
   
   e1
   
   plot(e1, 'ROC')
   
+  # Predicted habitat vs. not habitat plot, using 
+  # whichever threshold approach selected in function call.
+  habitat_or_not = predictions
+  
+  threshold_value = key_metrics |> 
+    dplyr::filter(metric == habitat_threshold_var) |> 
+    dplyr::pull(value)
+  
+  habitat_or_not[habitat_or_not < threshold_value] = FALSE
+  habitat_or_not[habitat_or_not >= threshold_value] = TRUE
+  
   list(model_fit = me,
        key_metrics = key_metrics,
        predictions_r = predictions,
        predictions_plot = predictions_plot,
-       evaluation_output = e1
-       )
+       evaluation_output = e1,
+       habitat_predictions = habitat_or_not
+  )
 }
