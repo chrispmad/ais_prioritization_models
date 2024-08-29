@@ -40,6 +40,11 @@ terra::plot(ref)
 terra::plot(ref_more_detailed)
 # Download the streams (order 3+) for each of the BC Natural Resource Regions.
 # If already downloaded, this section does nothing.
+
+# Stupid data problems: two subwatersheds are called Salmon River.
+the_salmons = which(ws$WATERSHED_GROUP_NAME == 'Salmon River')
+ws[the_salmons[2],]$snake_name = "salmon_river_vi"
+
 for(i in 1:nrow(ws)){
   
   print(i)
@@ -66,28 +71,64 @@ for(i in 1:nrow(ws)){
   }
   
   # Has the raster version of these streams' extents not been made? If not, run that below.
-  streams = readRDS(paste0(onedrive_path, "fwa_streams/",the_ws$snake_name,"_streams_order_3_plus.rds"))
-  
-  # buffer streams
-  streams = sf::st_buffer(streams, dist = streams$STREAM_ORDER * 5)
-  
-  # Reproject streams to WGS 84.
-  streams = sf::st_transform(streams, 4326)
-  
-  ggplot() + geom_sf(data = streams, aes(col = as.character(STREAM_ORDER)))
-  
-  library(exactextractr)
-  streams_r <- exactextractr::rasterize_polygons(streams, 
-                                                  ref_more_detailed)
-  
-  all_stream_orders = streams[streams_r[],]$STREAM_ORDER
-  
-  streams_r$stream_order = all_stream_orders
-  
-  terra::plot(streams_r$stream_order)
-  
-  streams_r$bio01 = NULL
-  
-  terra::writeRaster(streams_r, paste0(onedrive_path, "fwa_streams/",the_ws$snake_name,"_streams_order_3_plus.tif"), overwrite = TRUE)
-  
+  if(!file.exists(paste0(onedrive_path, "fwa_streams/",the_ws$snake_name,"_streams_order_3_plus.tif"))){
+    
+    streams = readRDS(paste0(onedrive_path, "fwa_streams/",the_ws$snake_name,"_streams_order_3_plus.rds"))
+    
+    # buffer streams
+    streams = sf::st_buffer(streams, dist = streams$STREAM_ORDER * 5)
+    
+    # Reproject streams to WGS 84.
+    streams = sf::st_transform(streams, 4326)
+    
+    ggplot() + geom_sf(data = streams, aes(col = as.character(STREAM_ORDER)))
+    
+    library(exactextractr)
+    streams_r <- exactextractr::rasterize_polygons(streams, 
+                                                   ref_more_detailed)
+    
+    all_stream_orders = streams[streams_r[],]$STREAM_ORDER
+    
+    streams_r$stream_order = all_stream_orders
+    
+    terra::plot(streams_r$stream_order)
+    
+    streams_r$bio01 = NULL
+    
+    terra::writeRaster(streams_r, paste0(onedrive_path, "fwa_streams/",the_ws$snake_name,"_streams_order_3_plus.tif"), overwrite = TRUE)
+  }
 }
+
+rast_paths = list.files(path = paste0(onedrive_path,"fwa_streams/"),
+                        pattern = 'plus.tif',
+                        full.names = T)
+
+# One of the our subwatersheds didn't run properly - which one?
+# ws_names = snakecase::to_snake_case(ws$WATERSHED_GROUP_NAME)
+
+# finished_raster_file_names = unlist(str_extract_all(rast_paths,"(?<=fwa_streams\\/).*(?=_streams)"))
+
+# ggplot() + geom_sf(data = ws[ws$WATERSHED_GROUP_NAME == 'Salmon River',])
+
+stream_r_m = rast_paths |> 
+  lapply(\(x) terra::rast(x))
+
+stream_r_stack = terra::rast(stream_r_m)
+
+# Function to sum non-NA values across the raster stack
+combine_non_na <- function(...) {
+  rasters <- list(...)
+  # Use sum with na.rm = TRUE to sum non-NA values
+  return(max(unlist(rasters), na.rm = TRUE))
+}
+
+# Apply the function across all layers in the stack
+combined_raster <- app(stream_r_stack, fun = combine_non_na)
+
+the_min_value = min(terra::values(combined_raster))
+
+combined_raster[combined_raster == the_min_value] <- NA
+
+terra::plot(combined_raster)
+
+terra::writeRaster(combined_raster, paste0(onedrive_path, "fwa_streams/stream_order_three_plus_2km_res.tif"), overwrite = TRUE)
