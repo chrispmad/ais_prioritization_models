@@ -45,20 +45,47 @@ tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
 #class(tempSF$COLLECTION_DATE[1])
 #summary(tempSF$COLLECTION_DATE)
 
-temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search-2),"-01-01") &
+temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") &
                    tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>%
           filter(!is.na(MONITORING_LOCATION))
 #temp2024<-tempSF
+
+ggplot() + geom_histogram(data = temp2024, aes(COLLECTION_DATE))
 
 ### Increase the number of location types!
 results<-temp2024 %>%
   dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
   dplyr::filter(!is.na(RESULT)) %>% 
   dplyr::filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK" |
-                LOCATION_TYPE == "MONITORING WELL" |
-                LOCATION_TYPE == "LAKE OR POND") %>% 
-  dplyr::group_by(MONITORING_LOCATION) %>% 
-  dplyr::summarise(medianVal = median(RESULT))
+                  LOCATION_TYPE == "MONITORING WELL" |
+                  LOCATION_TYPE == "LAKE OR POND") #%>% 
+# dplyr::group_by(MONITORING_LOCATION) %>% 
+# dplyr::summarise(medianVal = median(RESULT))
+
+results_albers = sf::st_transform(results, 3005)
+
+# Simplify our input data so that there is one point of data per 100km^2 raster cell.
+interp_grid = sf::st_make_grid(sf::st_as_sf(bc_vect_alb), cellsize = c(10000,10000)) |> 
+  sf::st_as_sf() |> 
+  sf::st_filter(sf::st_as_sf(bc_vect_alb))
+
+results_albers_overlap = interp_grid |> 
+  dplyr::mutate(row_id = row_number()) |> 
+  sf::st_join(results_albers)
+
+results_albers_overlap = results_albers_overlap |> 
+  dplyr::group_by(row_id) |> 
+  dplyr::mutate(medianVal = median(RESULT)) |> 
+  dplyr::ungroup() |> 
+  dplyr::filter(!duplicated(row_id))
+
+results_albers_as_centroids = results_albers_overlap |> 
+  sf::st_centroid()
+
+ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col = medianVal))
+
+results_albers_as_centroids_no_na = results_albers_as_centroids |> dplyr::filter(!is.na(medianVal))
+
 
 
 
@@ -161,36 +188,14 @@ grid10km <- expand.grid(
 
 #terra::plot(grid10km)
 
-st_crs(tointerp)
+st_crs(results_albers_as_centroids_no_na)
 st_crs(grid10km)
-
-# Simplify our input data so that there is one point of data per 100km^2 raster cell.
-interp_grid = sf::st_make_grid(sf::st_as_sf(bc_vect_alb), cellsize = c(10000,10000)) |> 
-  sf::st_as_sf() |> 
-  sf::st_filter(sf::st_as_sf(bc_vect_alb))
-
-interp_grid_overlap = interp_grid |> 
-  dplyr::mutate(row_id = row_number()) |> 
-  sf::st_join(tointerp)
-
-interp_grid_overlap = interp_grid_overlap |> 
-  dplyr::group_by(row_id) |> 
-  dplyr::mutate(medianVal = mean(medianVal)) |> 
-  dplyr::ungroup() |> 
-  dplyr::filter(!duplicated(row_id))
-
-interp_grid_as_centroids = interp_grid_overlap |> 
-  sf::st_centroid()
-
-ggplot() + geom_sf(data = interp_grid_as_centroids, aes(fill = medianVal, col = medianVal))
-
-interp_grid_as_centroids_no_na = interp_grid_as_centroids |> dplyr::filter(!is.na(medianVal))
 
 #what are the settings here? What could be done to better fit the data?
 ## nugget is y intercept; range is the point wher the variogram levels off; sill is the total
 ## level where the empirical variogram appears to level off. 
 varKRVar <- autofitVariogram(medianVal ~ 1, 
-                            as(interp_grid_as_centroids_no_na, "Spatial"),
+                            as(results_albers_as_centroids_no_na, "Spatial"),
                             verbose=TRUE,
                             fix.values = c(0,NA,NA))
 
@@ -200,7 +205,7 @@ plot(varKRVar)
 
 #interpolation model
 KRvarmod <- gstat(formula=medianVal~1,
-                 locations=as(interp_grid_as_centroids_no_na,"Spatial"),
+                 locations=as(results_albers_as_centroids_no_na,"Spatial"),
                  model=varKRVar$var_model
                  )
 KRvarmod
