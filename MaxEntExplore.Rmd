@@ -1,5 +1,5 @@
 ---
-title: "ExplroeData"
+title: "ExploreData"
 author: "John Phelan and Chris Madsen"
 date: "8/28/2024"
 output: html_document
@@ -125,7 +125,7 @@ samp<- d %>%
 
 
 
-thin<-d_thin %>% 
+samp_thin<-d_thin %>% 
   plyr::mutate(x = st_coordinates(geometry)[,1],
                      y = st_coordinates(geometry)[,2]) %>% 
     sf::st_drop_geometry() |> 
@@ -375,13 +375,11 @@ This is a measure of spatial autocorrelation. How related are the variables bsed
 
 library(geosphere)
 #samp_dist<-as.matrix(distCosine(c(0,0), cbind(samp$x, samp$y)))
-samp_dist <- as.matrix(dist(cbind(samp$x, samp$y)))
+samp_dist <-distm(samp[1:2], fun = distHaversine)
 samp_dist_inv<-1/samp_dist
 diag(samp_dist_inv)<-0
-#there are infinites in the inverse matrix- setting them to 0 worked, but what does this do
-# to the calculation of Morans I
 samp_dist_inv[is.infinite(samp_dist_inv)]<-0
-samp_dist_inv[1:5, 1:5]
+
 
 Moran.I(samp$temp, samp_dist_inv)
 
@@ -390,13 +388,12 @@ Moran.I(samp$temp, samp_dist_inv)
 
 
 ```{r moran_thin}
-samp_dist <- as.matrix(dist(cbind(samp_thin$x, samp_thin$y)))
+#samp_dist <- as.matrix(dist(cbind(samp_thin$x, samp_thin$y)))
+samp_dist<-distm(samp_thin[1:2], fun = distHaversine)
 samp_dist_inv<-1/samp_dist
 diag(samp_dist_inv)<-0
-#there are infinites in the inverse matrix- setting them to 0 worked, but what does this do
-# to the calculation of Morans I
 samp_dist_inv[is.infinite(samp_dist_inv)]<-0
-samp_dist_inv[1:5, 1:5]
+
 
 Moran.I(samp_thin$temp, samp_dist_inv)
 
