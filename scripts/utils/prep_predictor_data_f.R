@@ -7,15 +7,23 @@ prep_predictor_data = function(proj_path,
   bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
   
   # Pull in climate variables
-  ph_NAM = terra::rast(paste0(onedrive_path,"ph-KR-208784-median_10km_ZN.tif")) |> terra::project("EPSG:4326")
+  ph_NAM = terra::rast(paste0(onedrive_path,"CNF/ph-KR-208784-median_10km_ZN.tif")) |> terra::project("EPSG:4326")
   names(ph_NAM) <- "pH"
-  Calc_NAM = terra::rast(paste0(onedrive_path,"calcium-KR-97648-median-10km-ZN.tif")) |> terra::project("EPSG:4326")
+  Calc_NAM = terra::rast(paste0(onedrive_path,"CNF/calcium-KR-97648-median-10km-ZN.tif")) |> terra::project("EPSG:4326")
   names(Calc_NAM) <- "calc"
   
   # Pull in distance to road network
-  roads = terra::rast(paste0(onedrive_path,"distance_to_road_raster.tif"))
+  roads = terra::rast(paste0(onedrive_path,"CNF/distance_to_road_raster.tif"))
   names(roads) <- "dist_to_highways"
   
+  # Pull in population density raster
+  pop_dens = terra::rast(paste0(onedrive_path,"CNF/population_density_raster.tif"))
+  names(pop_dens) = "population_density"
+  
+  # Pull in stream order (of streams with stream order 3+), 2km resolution.
+  # stream_ord = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif"))
+  # names(stream_ord) = "stream_order"
+  # stream_ord[] = factor(terra::values())
   # Read in variable names for the worldclim variables.
   renames<-c("Annual Mean Temperature", 
              "Mean Diurnal Range (temp)", 
@@ -44,17 +52,19 @@ prep_predictor_data = function(proj_path,
   # names(pred_bioc)<-renames
   
   # Pull in elevation raster with {elevatr}
-  elev = suppressMessages(elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 4)) |>
-    terra::rast() |> 
-    terra::crop(bc_vect) |> 
-    terra::mask(bc_vect)
+  # elev = suppressMessages(elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 4)) |>
+  #   terra::rast() |> 
+  #   terra::crop(bc_vect) |> 
+  #   terra::mask(bc_vect)
+  elev = terra::rast(paste0(onedrive_path,"CNF/elevation_BC.tif"))
+  
   names(elev) = "elev"
   
   print("Combining rasters...")
   
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
-                 ph_NAM,Calc_NAM,roads,elev)
+                 ph_NAM,Calc_NAM,roads,elev,pop_dens)
   
   # Cut our rasters down to just BC.
   rasters = rasters |> 
