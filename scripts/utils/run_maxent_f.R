@@ -5,9 +5,11 @@ run_maxent = function(species,
                       seed = 12345,
                       number_pseudoabsences = 5000,
                       number_folds = 5,
-                      habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
-                      
+                      habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold",
+                      output_folder = NULL
 ){
+  
+  if(is.null(output_folder)) output_folder = getwd()
   
   if(!is.null(seed)) set.seed(seed)
   
@@ -54,7 +56,7 @@ run_maxent = function(species,
     predictor_data = predictor_data[[c(vars_to_use)]]
   }
   
-  print("Pulling predictor raster values for presence points...")
+  cat("\nPulling predictor raster values for presence points...")
   
   for(raster_var in unique(names(predictor_data))){
     dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
@@ -131,7 +133,7 @@ run_maxent = function(species,
   maxent_results_l = list()
   
   # Make MaxEnt model
-  print("Making MaxEnt Model...")
+  cat("\nMaking MaxEnt Model...")
   me <- MaxEnt(predictor_data_low_cor, p = presences, a = pseudoabsences)
   
   # Check out results - this dataframe could be simplified to just hone in 
@@ -226,8 +228,10 @@ run_maxent = function(species,
       terra::vect()
   )
   
-  # obs <- (ecospat.testData$glm_Saxifraga_oppositifolia
-  #         [which(ecospat.testData$Saxifraga_oppositifolia==1)])
+  if(sum(is.na(fit$maxent)) > 0){
+    cat(paste0("\n",sum(is.na(fit$maxent))," pseudoabsences wound up with NA for MaxEnt prediction - removing for Boyce Index calculation..."))
+    fit = fit[!is.na(fit$maxent),]
+  }
   
   boyce_results = ecospat.boyce(fit = fit$maxent, obs$maxent, nclass=0, 
                  window.w="default", res=100, PEplot = TRUE)
@@ -243,6 +247,30 @@ run_maxent = function(species,
     labs(y = "Predicted/Expected Ratio", x = "Habitat Suitability") + 
     geom_label(aes(x = 0.1, y = 0.95*max(boyce_df$F.ratio)),
                label = paste0("Correlation: ",unique(boyce_df$cor)), color = 'purple')
+  
+  # Check for output folder; if it exists already, delete contents.
+  output_fn = paste0(output_folder,"/",species_name,"_results/")
+  
+  if(!dir.exists(output_fn)){
+    dir.create(output_fn)
+  } else {
+    old_files = list.files(path = output_fn, full.names = T)
+    cat("\nDeleting old contents of results folder...\n")
+    old_files |> 
+      lapply(\(x) file.remove(x))
+  }
+  
+  file.copy(from = me@html, to = paste0(output_fn,"MaxEnt_results.html"))
+  write.csv(key_metrics, paste0(output_fn,"MaxEnt_key_metrics.csv"), row.names = F)
+  terra::writeRaster(predictions, paste0(output_fn,"MaxEnt_prediction_raster.tif"))
+  terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
+  ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
+                  plot = predictions_plot,
+                  dpi = 300, width = 8, height = 8)
+  ggplot2::ggsave(filename = paste0(output_fn,"Boyce_index_plot.png"),
+                  plot = boyce_plot,
+                  dpi = 300, width = 6, height = 6)
+  cat("\nFiles written to output folder...\n")
   
   list(model_fit = me,
        key_metrics = key_metrics,

@@ -60,7 +60,7 @@ source("scripts/utils/run_maxent_f.R")
 goldfish_results = run_maxent(species = goldfish, 
                               predictor_data = predictor_data,
                               onedrive_path = onedrive_wd,
-                              number_pseudoabsences = 100)
+                              number_pseudoabsences = 5000)
 
 # pumkinseed_results = run_maxent(species = pumkinseed, 
 #                                 predictor_data = predictor_data,
