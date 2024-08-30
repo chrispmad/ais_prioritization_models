@@ -40,12 +40,13 @@ run_maxent = function(species,
   
   # Make {terra} vector of BC.
   bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-    # Bring in watercourses to constrain randomly sampled pseudoabsences to biologically meaningful locations
+  
+  # Bring in watercourses to constrain randomly sampled pseudoabsences to biologically meaningful locations
   # for aquatic organisms.
   # watercourses = terra::rast(paste0(onedrive_path,"stream_density_6_plus_order_raster.tif")) |> 
-  watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) |> 
+  watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) #|> 
     # terra::resample(predictor_data[[1]]) |> 
-    terra::mask(bc_vect)
+    # terra::mask(bc_vect)
   
   # If the user has specified a list of predictor variables to use, just keep those.
   if(!is.null(vars_to_use)){
@@ -101,9 +102,21 @@ run_maxent = function(species,
   # Pull out x and y coordinates for presences
   presences = sf::st_drop_geometry(dat[,c('x','y')])
   
+  # Make sure presences are distinct.
+  presences = dplyr::distinct(presences)
+  
   # Sample watercourses' locations for a collection of pseudoabsences; combine with data and then split into testing and training.
-  pseudoabsences <-randomPoints(raster::raster(watercourses), n = number_pseudoabsences) %>% 
+  pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(dat), n = number_pseudoabsences,
+                                extf = 0.9) %>% 
     as.data.frame()
+  
+  # pseudo_sf = sf::st_as_sf(pseudoabsences, coords = c("x","y"), crs = 4326)
+  
+  # for(raster_var in unique(names(predictor_data))){
+  #   pseudoabsences[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+  #                                                  pseudoabsences[,c("x","y")], ID = FALSE,
+  #                                                  fun = 'max', na.rm=T)[[raster_var]]
+  # }
   
   presabs = dplyr::bind_rows(
     presences,
@@ -170,7 +183,9 @@ run_maxent = function(species,
          subtitle = paste0("Training Samples: ",train_samp,
                            "<br>",
                            "Training Area-Under-Curve: ",train_auc),
-         caption = metrics_caption) + 
+         caption = metrics_caption,
+         fill = "Predicted \nRelative \nSuitability",
+         color = "Sample Type") + 
     theme(
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
@@ -194,11 +209,48 @@ run_maxent = function(species,
   habitat_or_not[habitat_or_not < threshold_value] = FALSE
   habitat_or_not[habitat_or_not >= threshold_value] = TRUE
   
+  # Run Boyce Index! It requires:
+  # 1. model predictions for all locations (presences and pseudoabsences) ("fit")
+  # 2. model predictions for just presences ("obs")
+
+  fit = terra::extract(
+    predictions,
+    points_sf |>
+    terra::vect()
+    )
+  
+  obs = terra::extract(
+    predictions,
+    points_sf |>
+      dplyr::filter(type == "presence") |> 
+      terra::vect()
+  )
+  
+  # obs <- (ecospat.testData$glm_Saxifraga_oppositifolia
+  #         [which(ecospat.testData$Saxifraga_oppositifolia==1)])
+  
+  boyce_results = ecospat.boyce(fit = fit$maxent, obs$maxent, nclass=0, 
+                 window.w="default", res=100, PEplot = TRUE)
+  
+  boyce_df = as.data.frame(boyce_results)
+
+  boyce_plot = ggplot() + 
+    geom_point(data = boyce_df, aes(x = HS, y = F.ratio)) + 
+    scale_x_continuous(breaks = seq(0,max(boyce_df$HS),0.1)) +
+    scale_y_continuous(breaks = seq(0,max(boyce_df$F.ratio),0.2)) +
+    theme(panel.background = element_rect(color = 'black', fill = 'white'),
+          panel.grid.major = element_line(color = 'black', linetype = 3)) + 
+    labs(y = "Predicted/Expected Ratio", x = "Habitat Suitability") + 
+    geom_label(aes(x = 0.1, y = 0.95*max(boyce_df$F.ratio)),
+               label = paste0("Correlation: ",unique(boyce_df$cor)), color = 'purple')
+  
   list(model_fit = me,
        key_metrics = key_metrics,
        predictions_r = predictions,
        predictions_plot = predictions_plot,
        evaluation_output = e1,
-       habitat_predictions = habitat_or_not
+       habitat_predictions = habitat_or_not,
+       boyce_results = boyce_results,
+       boyce_plot = boyce_plot
   )
 }
