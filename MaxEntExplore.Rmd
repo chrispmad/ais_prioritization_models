@@ -20,6 +20,7 @@ library(dismo)
 library(rJava)
 library(spatstat)
 library(ape)
+library(bcmaps)
 source("ZuurFuncs.R")
 source("scripts/utils/thin_occ.R")
 
@@ -166,7 +167,7 @@ samp_thin = samp_thin[complete.cases(samp_thin),]
 
 ```
 
-### Where are the observations?
+### Where are the observations? {.tabset}
 
 #### Presence plot
 ```{r plot_points}
@@ -191,26 +192,85 @@ ggplot()+
 
 ```
 
-Goldfish are found in multiple locations across the province, with a concentration in the south west of the province. This could be due to a sampling error, but it more likely due to their method of introduction to British Columbia. Release of goldfish is done by people who had them as pets.
 
+
+#### Density plot
 ```{r occ_heatmap}
 library(spatstat)
 
 bc_alb<-st_transform(bc_bound(), 3005)
 d_alb<-st_transform(d, 3005)
 d_alb<- d_alb %>% 
-  select(geometry)
+  dplyr::select(geometry)
 
-bc_grid<- bc_alb %>% 
-  st_make_grid(cellsize = 10000, square = T) %>% 
-  st_set_crs(3005)
-plot(bc_grid)
+raster_base <- rast(vect(bc_alb))
+res(raster_base)<-10000
+values(raster_base)<-0
+raster_occ <- rasterize(vect(d_alb), raster_base, fun = "count")
+raster_occ_masked <- mask(raster_occ, raster_base)
 
-occ_percent<-rasterize( d_alb,terra::rast(bc_grid), fun = "count")
+# ggplot() +
+#   geom_sf(data = bc_alb, color = "lightgrey", alpha = 0.5)+
+#   geom_raster(data = as.data.frame(raster_occ_masked, xy = TRUE),
+#               aes(x = x, y = y, fill = count)) +
+#   scale_color_viridis_c()+
+#   coord_sf() +
+#   theme_minimal()
+# 
+# 
+# ggplot(data = samp)+
+#   geom_sf(data = st_boundary(bc), fill = "transparent")+
+#   stat_density2d(geom = "polygon", aes(x =x, y= y,fill = after_stat(level)), bins = 4)+
+#   geom_point(aes(x =x, y= y),alpha = 0.1)
+# 
+# 
+# ggplot(data = samp)+
+#   geom_sf(data = st_boundary(bc), fill = "transparent")+
+#   geom_density2d_filled(
+#     aes(x =x, y= y,fill = after_stat(level)),
+#     contour_var = "ndensity",
+#     breaks = seq(0.1, 1, length.out = 10)
+#   )
+# library(MASS)
+x1<-terra::ext(bc_vect)[1];x2<-terra::ext(bc_vect)[2]
+y1<-terra::ext(bc_vect)[3];y2<-terra::ext(bc_vect)[4]
+
+d_alb_kde<-MASS::kde2d(samp$x, samp$y,n=1000, lims = c(x1,x2,y1,y2))
+#image(d_alb_kde)
+smooth_rast<-rast(d_alb_kde)
+terra::crs(smooth_rast)<-"EPSG:4326"
+##cropeed
+#croprast<-terra::project(smooth_rast, "EPSG:4326")
+croprast<-terra::crop(smooth_rast, bc_vect)
+croprast<-terra::mask(smooth_rast, bc_vect)
+#plot(croprast)
+z1<-croprast$lyr.1*nrow(samp) # actual abundances for the raster
+
+ggplot() +
+  geom_sf(data = st_transform(bc,4326), color = "lightgrey", alpha = 0.5)+
+  geom_raster(data = as.data.frame(croprast, xy = TRUE),
+              aes(x = x, y = y, fill = lyr.1)) +
+  scale_fill_viridis_c(name = paste0("Presence of ",sppOI))+
+  coord_sf() +
+  #ggthemes::theme_map()+
+  guides(colour = guide_colourbar(position = "right"))+
+  theme(
+    plot.title = element_text(size = rel(2), face = "bold"),
+    plot.subtitle = element_text(size = rel(1.8)),
+    legend.title = element_text(size = rel(1.8)),
+    legend.text = element_text(size = rel(1.2)),
+    legend.position = 'right',
+    panel.background = element_blank(),
+    legend.key.height = unit(1, "null"),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  )
 
 
 ```
 
+Goldfish are found in multiple locations across the province, with a concentration in the south west of the province. This could be due to a sampling error, but it more likely due to their method of introduction to British Columbia. Release of goldfish is done by people who had them as pets.
 
 
 ### Variables {.tabset}
@@ -241,6 +301,9 @@ geom_boxplot(data = samp_thin, aes(y = temp))+
         legend.position = 'bottom',
         panel.background = element_blank()
         )
+
+
+
 
 ```
 
@@ -388,20 +451,24 @@ corvif(Z_thin[, c(-1,-7)])
 
 In this, we are looking for variables with values above 3. Temperature, precipiation, pH and elevation are all above this threshold. This further confirms my suspicion that elevation needs to be removed for this model.
 
-### Morans I
-This is a measure of spatial autocorrelation. How related are the variables bsedon the locations based on where they are located. 
+
+
+<!-- ### Morans I -->
+<!-- This is a measure of spatial autocorrelation. How related are the variables bsedon the locations based on where they are located.  -->
 
 ```{r morn}
 
-library(geosphere)
-#samp_dist<-as.matrix(distCosine(c(0,0), cbind(samp$x, samp$y)))
-samp_dist <-distm(samp[1:2], fun = distHaversine)
-samp_dist_inv<-1/samp_dist
-diag(samp_dist_inv)<-0
-samp_dist_inv[is.infinite(samp_dist_inv)]<-0
+# library(geosphere)
+# #samp_dist<-as.matrix(distCosine(c(0,0), cbind(samp$x, samp$y)))
+# samp_dist <-distm(samp[1:2], fun = distHaversine)
+# samp_dist_inv<-1/samp_dist
+# diag(samp_dist_inv)<-0
+# samp_dist_inv[is.infinite(samp_dist_inv)]<-0
+# 
+# 
+# Moran.I(samp$temp, samp_dist_inv)
+# Moran.I(samp$precip, samp_dist_inv)
 
-
-Moran.I(samp$temp, samp_dist_inv)
 
 
 ```
@@ -409,15 +476,17 @@ Moran.I(samp$temp, samp_dist_inv)
 
 ```{r moran_thin}
 #samp_dist <- as.matrix(dist(cbind(samp_thin$x, samp_thin$y)))
-samp_dist<-distm(samp_thin[1:2], fun = distHaversine)
-samp_dist_inv<-1/samp_dist
-diag(samp_dist_inv)<-0
-samp_dist_inv[is.infinite(samp_dist_inv)]<-0
-
-
-Moran.I(samp_thin$temp, samp_dist_inv)
+# samp_dist<-distm(samp_thin[1:2], fun = distHaversine)
+# samp_dist_inv<-1/samp_dist
+# diag(samp_dist_inv)<-0
+# samp_dist_inv[is.infinite(samp_dist_inv)]<-0
+# 
+# 
+# Moran.I(samp_thin$temp, samp_dist_inv)
 
 
 
 ```
+
+
 
