@@ -32,7 +32,7 @@ onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Governm
 
 ## Data description
 
-The modelling efforts are to describe the highest risk locations for aquatic invasive species (AIS), by species and by identifying suitable habitat per species, a general map of potential suitable habitat for AIS. To do this, presence data is supplied to a model with a list of potential explanatory variables.
+The objectives of this work/study are to describe the highest risk locations for aquatic invasive species (AIS), by species and by identifying suitable habitat per species, a general map of potential suitable habitat for AIS. To do this, presence data is supplied to a model with a list of potential explanatory variables.
 
 Presence data comes from a range of sources:
 
@@ -46,15 +46,9 @@ Presence data comes from a range of sources:
 
 These sources provide us with the source of the data, The date of recording, the species in question, the name of the location, and the geometry (location) where the species was recorded. There are no absence data supplied.
 
-For explanatory variables, there are a number of data available. The bioclim model gives a range of climatic variable that can be included. Such as temperature and precipitation. This is a raster file. The bioclim data is available both for present day and future climate scenarios. There are also a range of resolutions for the data. Resolutions may need to be altered for modelling.
+For explanatory variables, there are a number of data available. The bioclim model gives a range of climatic variable that can be included, such as temperature and precipitation. This is a raster file. The bioclim data is available both for present day and future climate scenarios. There are also a range of resolutions for the data. Resolutions may need to be altered for modelling. The data are supplied as rasters and are in 2.5, 5 or 10 minute increments. Water chemistry and temperature data are available from other sources, such as the environmental monitoring dataset.  
 
-Annual mean temperature is available from Worldclim. Historical and future climate scenarios are available. The data are supplied as rasters and are in 2.5, 5 or 10 minute increments. Water chemistry and temperature data are available from other sources, such as the environmental monitoring dataset. 
-
-pH and Calcium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters.
-
-
-Temperature should come from EMS too!
-
+pH and Calcium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters. This data are sourced in the EMS database too.
 
 ```{r data_collection, echo=FALSE}
 sppOI<-"goldfish"
@@ -179,20 +173,18 @@ ggplot()+
   geom_point(data = samp, aes (x = x, y = y, color = as.factor(present)), size = 1.3)+
   scale_color_manual(values = c("0" = "purple", "1" = "darkgreen"),
                      labels = c("0" = "Absent", "1" = "Present"))+
-  labs(color = paste0("Presence of ",sppOI))+
+  labs(color = paste0("Presence of \n",sppOI))+
   ggthemes::theme_map()+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
-        legend.position = 'bottom',
+        legend.position = c(0.85, 0.5),
         panel.background = element_blank()
   ) 
   
 
 ```
-
-
 
 #### Density plot
 ```{r occ_heatmap}
@@ -270,7 +262,7 @@ ggplot() +
 
 ```
 
-Goldfish are found in multiple locations across the province, with a concentration in the south west of the province. This could be due to a sampling error, but it more likely due to their method of introduction to British Columbia. Release of goldfish is done by people who had them as pets.
+Goldfish are found in multiple locations, with a concentration in the south west of the province. This could be due to a sampling error, but it more likely due to their method of introduction to British Columbia. Release of goldfish is done by people who had them as pets. It would appear that they are concentrated around areas of high population density.
 
 
 ### Variables {.tabset}
@@ -435,6 +427,23 @@ scatterPlotMatrix(samp_thin, zAxisDim = "present", keptColumns = c("temp", "prec
 
 ```
 
+### Correlation of Rasters
+
+```{r Raster_Correlation}
+library(ENMTools)
+
+cor<-raster.cor.matrix(stack_data)
+thresh<-0.6
+dists<-as.dist(1-abs(cor))
+clust <- hclust(dists, method = "single")
+groups <- cutree(clust, h = 1 - thresh)
+## Visualize groups:
+plot(clust, hang = -1)
+rect.hclust(clust, h = 1 - thresh)
+groups
+```
+
+The groups displayed here are the names of rasters that are considered to be correlated with each other, subject to a user-defined threshold. In this case, 0.6. Increasing this value will result in smaller groups, which reduces the likelihood of finding correlated variables. Reducing this value further would result in larger groups with more focus on groups that are moderately correlated. If the correlation between the rasters is higher than this, then they are put in the same group. Only one variable should be kept from each group, which would reduce colinearity and increase emphasize biologically important variables. This approach does not deal with multi-colinearity.
 
 
 ### Variance inflation factors {.active}
@@ -449,12 +458,20 @@ colnames(Z_thin)<-c("Present", "Temp", "Precip", "Calcium", "pH", "Elevation")
 corvif(Z_thin[, c(-1,-7)])
 ```
 
-In this, we are looking for variables with values above 3. Temperature, precipiation, pH and elevation are all above this threshold. This further confirms my suspicion that elevation needs to be removed for this model.
+In this, we are looking for variables with values above 3, which is subjective. In this case, temperature, precipiation, pH and elevation are all above this threshold.
 
+### Variance Inflation Factors, 2 ways
 
+```{r}
 
-<!-- ### Morans I -->
-<!-- This is a measure of spatial autocorrelation. How related are the variables bsedon the locations based on where they are located.  -->
+vif2<-usdm::vif(stack_data)
+vif2
+```
+
+Documentation for this function suggests values above 10 mean predictors are correlated. The cut-off varies among papers and experts from 5-20 as a suggested cut off point.
+
+<!-- Morans I -->
+<!-- This is a measure of spatial autocorrelation. How related are the variables bsedon the locations based on where they are located. -->
 
 ```{r morn}
 
@@ -475,7 +492,7 @@ In this, we are looking for variables with values above 3. Temperature, precipia
 
 
 ```{r moran_thin}
-#samp_dist <- as.matrix(dist(cbind(samp_thin$x, samp_thin$y)))
+# samp_dist <- as.matrix(dist(cbind(samp_thin$x, samp_thin$y)))
 # samp_dist<-distm(samp_thin[1:2], fun = distHaversine)
 # samp_dist_inv<-1/samp_dist
 # diag(samp_dist_inv)<-0
@@ -483,8 +500,6 @@ In this, we are looking for variables with values above 3. Temperature, precipia
 # 
 # 
 # Moran.I(samp_thin$temp, samp_dist_inv)
-
-
 
 ```
 
