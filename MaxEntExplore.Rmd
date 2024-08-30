@@ -193,6 +193,26 @@ ggplot()+
 
 Goldfish are found in multiple locations across the province, with a concentration in the south west of the province. This could be due to a sampling error, but it more likely due to their method of introduction to British Columbia. Release of goldfish is done by people who had them as pets.
 
+```{r occ_heatmap}
+library(spatstat)
+
+bc_alb<-st_transform(bc_bound(), 3005)
+d_alb<-st_transform(d, 3005)
+d_alb<- d_alb %>% 
+  select(geometry)
+
+bc_grid<- bc_alb %>% 
+  st_make_grid(cellsize = 10000, square = T) %>% 
+  st_set_crs(3005)
+plot(bc_grid)
+
+occ_percent<-rasterize( d_alb,terra::rast(bc_grid), fun = "count")
+
+
+```
+
+
+
 ### Variables {.tabset}
 
 #### Outliers {.tabset}
