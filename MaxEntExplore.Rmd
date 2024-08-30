@@ -1,8 +1,10 @@
 ---
 title: "ExploreData"
 author: "John Phelan and Chris Madsen"
-date: "8/28/2024"
+date: "`r Sys.Date()`"
 output: html_document
+params: 
+  sppOI: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -51,7 +53,9 @@ For explanatory variables, there are a number of data available. The bioclim mod
 pH and Calcium data are available from Geurin et al. 2024 where they used water quality data to interpolate values for these variables for North America in a 10*10km grid. Data are supplied as rasters. This data are sourced in the EMS database too.
 
 ```{r data_collection, echo=FALSE}
-sppOI<-"goldfish"
+# sppOI<-"goldfish"
+sppOI = params$sppOI
+
 # Get occurrence data for species (if we haven't done this yet!)
 if(!exists("d")){
   d = suppressMessages(grab_aq_occ_data(sppOI))
