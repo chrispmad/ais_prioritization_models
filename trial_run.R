@@ -9,6 +9,8 @@ library(ggpubr)
 library(dismo)
 library(rJava)
 source("ZuurFuncs.R")
+library(ecospat)
+
 #set locations
 
 proj_wd = getwd()
@@ -20,17 +22,45 @@ source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
 
 predictor_data = prep_predictor_data(proj_path = proj_wd,
-                                     onedrive_path = paste0(onedrive_wd,"CNF/"))
+                                     onedrive_path = paste0(onedrive_wd))
 
-goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
+if(!file.exists("data/goldfish_example_data.rds")){
+  goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
+  
+  
+  # Ensure unique coordinates by adding 
+  goldfish_jitter = goldfish |> 
+    dplyr::filter(duplicated(paste0(geometry))) |> 
+    sf::st_jitter(factor = 0.0001)
+  
+  not_jittered_goldfish = goldfish |> 
+    dplyr::filter(!duplicated(paste0(geometry)))
+  
+  goldfish_j = dplyr::bind_rows(goldfish_jitter,
+                                not_jittered_goldfish)
+  # library(leaflet)
+  # leaflet() |>
+  #   addTiles() |> 
+  #   addCircleMarkers(data = goldfish, color = 'black', fillColor = 'transparent') |> 
+  #   addCircleMarkers(data = goldfish_jitter, color = 'red', fillColor = 'red')
+  
+  
+  saveRDS(goldfish_j, "data/goldfish_example_data.rds")
+} else {
+  goldfish = readRDS("data/goldfish_example_data.rds")
+}
+
 # pumkinseed = bcinvadeR::grab_aq_occ_data('pumpkinseed')
 # freshwaterjelly = bcinvadeR::grab_aq_occ_data('freshwater jellyfish')
 # freshwaterjelly2 = bcinvadeR::grab_aq_occ_data('common freshwater jellyfish')
 # freshwaterjelly = dplyr::bind_rows(freshwaterjelly, freshwaterjelly2)
 
+source("scripts/utils/run_maxent_f.R")
+
 goldfish_results = run_maxent(species = goldfish, 
                               predictor_data = predictor_data,
-                              onedrive_path = onedrive_wd)
+                              onedrive_path = onedrive_wd,
+                              number_pseudoabsences = 100)
 
 # pumkinseed_results = run_maxent(species = pumkinseed, 
 #                                 predictor_data = predictor_data,
@@ -51,3 +81,8 @@ goldfish_results$predictions_plot
 goldfish_results$evaluation_output
 
 terra::plot(goldfish_results$habitat_predictions)
+
+goldfish_results$boyce_results
+
+goldfish_results$boyce_plot
+  
