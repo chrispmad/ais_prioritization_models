@@ -1,5 +1,3 @@
-
-
 thin_occ<-function(data){
   
   spp_df<- data %>% 
