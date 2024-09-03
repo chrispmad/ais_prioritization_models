@@ -10,6 +10,7 @@ library(dismo)
 library(rJava)
 source("ZuurFuncs.R")
 library(ecospat)
+library(ENMeval)
 
 #set locations
 
@@ -60,7 +61,8 @@ source("scripts/utils/run_maxent_f.R")
 goldfish_results = run_maxent(species = goldfish, 
                               predictor_data = predictor_data,
                               onedrive_path = onedrive_wd,
-                              number_pseudoabsences = 5000)
+                              number_pseudoabsences = 10000
+                              )
 
 # pumkinseed_results = run_maxent(species = pumkinseed, 
 #                                 predictor_data = predictor_data,
@@ -70,6 +72,8 @@ goldfish_results = run_maxent(species = goldfish,
 #                                 predictor_data = predictor_data,
 #                                 onedrive_path = onedrive_wd)
 
+goldfish_results$maxent_results
+
 goldfish_results$key_metrics
 
 goldfish_results$model_fit
@@ -78,11 +82,4 @@ terra::plot(goldfish_results$predictions_r)
 
 goldfish_results$predictions_plot
 
-goldfish_results$evaluation_output
-
 terra::plot(goldfish_results$habitat_predictions)
-
-goldfish_results$boyce_results
-
-goldfish_results$boyce_plot
-  
