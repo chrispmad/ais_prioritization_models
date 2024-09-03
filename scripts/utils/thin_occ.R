@@ -12,7 +12,7 @@ thin_occ<-function(data){
   thinned_data_full<-spThin::thin(loc.data = spp_df,
                                   lat.col = "y", long.col = "x",
                                   spec.col = "Species",
-                                  thin.par = 10,
+                                  thin.par = 1000,
                                   reps = 100,
                                   locs.thinned.list.return = T,
                                   write.files = F,
