@@ -85,29 +85,42 @@ krig_ems<-function(var_name){
   
   ref = pred_bioc_clipped$bio01
   
-  ref <- terra::project(ref, "EPSG:3005")
+  #### Don't project
+  
+  
+  #ref <- terra::project(ref, "EPSG:3005")
   values(ref)<-1
   
-  grid10km <- expand.grid(
-    height = ) %>%
-    mutate(Z = 0)  %>%
-    raster::rasterFromXYZ(crs = 3005)
+  ext_ref <- ext(ref)
+  res_ref <- res(ref)
+  x_seq <- seq(from = ext_ref[1], to = ext_ref[2], by = res_ref[1])
+  y_seq <- seq(from = ext_ref[3], to = ext_ref[4], by = res_ref[2])
+  grid10km <- expand.grid(x = x_seq, y = y_seq)
+  grid10km <- rast(grid10km, crs = crs(ref))
+  grid10km$nlyr<-1
+  #names(grid10km)<-"z"
+  grid10km<-raster(grid10km)
+  # grid10km <- expand.grid(
+  #   height = ) %>%
+  #   mutate(Z = 0)  %>%
+  #   raster::rasterFromXYZ(crs = 3005)
   
   st_crs(results_albers_as_centroids_no_na)
-  st_crs(grid10km)
-  
+  pointscrs<-st_transform(results_albers_as_centroids_no_na,4326)
+  # st_crs(grid10km)
+  # st_crs(pointscrs)
   varKRVar <- autofitVariogram(medianVal ~ 1, 
-                               as(results_albers_as_centroids_no_na, "Spatial"),
+                               as(pointscrs, "Spatial"),
                                verbose=TRUE,
                                fix.values = c(0,NA,NA))
   
   KRvarmod <- gstat(formula=medianVal~1,
-                    locations=as(results_albers_as_centroids_no_na,"Spatial"),
+                    locations=as(pointscrs,"Spatial"),
                     model=varKRVar$var_model
   )
   
-  # KRgrid10km <- as(ref, "SpatialGrid")
-  KRVar_interpolation <- predict(KRvarmod, raster(ref), debug.level = -1)
+  KRgrid10km <- as(grid10km, "SpatialGrid")
+  KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
   
   interp_r = terra::rast(KRVar_interpolation)
   interp_r = terra::mask(interp_r, bc_vect_alb)
