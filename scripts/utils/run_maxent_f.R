@@ -47,10 +47,7 @@ run_maxent = function(species,
   
   # Bring in watercourses to constrain randomly sampled pseudoabsences to biologically meaningful locations
   # for aquatic organisms.
-  # watercourses = terra::rast(paste0(onedrive_path,"stream_density_6_plus_order_raster.tif")) |> 
-  watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) #|> 
-    # terra::resample(predictor_data[[1]]) |> 
-    # terra::mask(bc_vect)
+  watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
   
   # If the user has specified a list of predictor variables to use, just keep those.
   if(!is.null(vars_to_use)){
@@ -114,31 +111,10 @@ run_maxent = function(species,
                                 extf = 0.9) %>% 
     as.data.frame()
   
-  # pseudo_sf = sf::st_as_sf(pseudoabsences, coords = c("x","y"), crs = 4326)
-  
-  # for(raster_var in unique(names(predictor_data))){
-  #   pseudoabsences[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
-  #                                                  pseudoabsences[,c("x","y")], ID = FALSE,
-  #                                                  fun = 'max', na.rm=T)[[raster_var]]
-  # }
-  
-  # presabs = dplyr::bind_rows(
-  #   presences,
-  #   pseudoabsences
-  # )
-  
-  # fold <- folds(presabs, k = number_folds)
-  # pa_test <- presabs[fold == 1, ]
-  # pa_train <- presabs[fold != 1, ]
-  
-  # Initialize list to store maxent model results.
-  maxent_results_l = list()
-  
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
-  # me_old <- MaxEnt(predictor_data_low_cor, p = presences, a = pseudoabsences)
-  
-  # John and I followed this website as a guide: 
+
+  # John and I followed this website as a guide: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html#eval
   # Consult if necessary!
   # ENMeval method of running maxent. Great because this includes lots of 
   # parameter tests etc. inside the function call.
@@ -156,9 +132,6 @@ run_maxent = function(species,
   var_importance = me@variable.importance[[opt.aicc$tune.args]]
   
   predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
-  
-  # Use MaxEnt model to predict to entire dataset
-  # predictions <- predict(me, predictor_data_low_cor)
   
   # Pull out maxent's predictions for occurrence locations.
 
@@ -191,10 +164,8 @@ run_maxent = function(species,
   key_metrics = single_model_metrics |>
     dplyr::filter(metric %in% c("x_training_samples","training_auc",habitat_threshold_var) | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
   
-  # pres_sf = sf::st_as_sf(presences, coords = c("x","y"), crs = 4326)
   pres_sf = sf::st_as_sf(me@occs, coords = c("x","y"), crs = 4326)
   pres_sf$groups = me@occs.grp
-  # absences_sf = sf::st_as_sf(pseudoabsences, coords = c("x","y"), crs = 4326)
   absences_sf = sf::st_as_sf(me@bg, coords = c("x","y"), crs = 4326)
   
   points_sf = dplyr::bind_rows(
@@ -203,8 +174,6 @@ run_maxent = function(species,
   )
   
   # Calculate some values to use as labels and captions in the figure.
-  # train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
-  # train_auc = key_metrics[key_metrics$metric == 'training_auc',]$value
   train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
   train_auc = maxent_results$auc.train
   
@@ -216,14 +185,6 @@ run_maxent = function(species,
     dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(percent.contribution,2),"%")) |>
     dplyr::ungroup() |>
     dplyr::summarise(paste0(v, collapse = '<br>'))
-  
-  # metrics_caption = key_metrics |> dplyr::filter(stringr::str_detect(metric,"contribution")) |>
-  #   dplyr::arrange(dplyr::desc(value)) |> 
-  #   dplyr::mutate(title_metric = stringr::str_replace_all(metric,"_"," ")) |> 
-  #   dplyr::rowwise() |> 
-  #   dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(value,2),"%")) |> 
-  #   dplyr::ungroup() |> 
-  #   dplyr::summarise(paste0(v, collapse = '<br>'))
   
   predictions_plot = ggplot() + 
     tidyterra::geom_spatraster(data = predictions) + 
@@ -256,10 +217,6 @@ run_maxent = function(species,
   habitat_or_not[habitat_or_not < threshold_value] = FALSE
   habitat_or_not[habitat_or_not >= threshold_value] = TRUE
   
-  # Run Boyce Index! It requires:
-  # 1. model predictions for all locations (presences and pseudoabsences) ("fit")
-  # 2. model predictions for just presences ("obs")
-
   fit = terra::extract(
     predictions,
     points_sf |>
@@ -274,24 +231,6 @@ run_maxent = function(species,
       dplyr::filter(type == "presence") |> 
       terra::vect()
   )
-  
-  # if(sum(is.na(fit$maxent)) > 0){
-  #   cat(paste0("\n",sum(is.na(fit$maxent))," pseudoabsences wound up with NA for MaxEnt prediction - removing for Boyce Index calculation..."))
-  #   fit = fit[!is.na(fit$maxent),]
-  # }
-  
-  # boyce_results = ecospat.boyce(fit = fit$maxent, obs$maxent, nclass=0, 
-  #                window.w="default", res=100, PEplot = TRUE)
-  # 
-  # boyce_df = as.data.frame(boyce_results)
-  # 
-  # boyce_plot = ggplot() + 
-  #   geom_point(data = boyce_df, aes(x = HS, y = F.ratio)) + 
-  #   theme(panel.background = element_rect(color = 'black', fill = 'white'),
-  #         panel.grid.major = element_line(color = 'black', linetype = 3)) + 
-  #   labs(y = "Predicted/Expected Ratio", x = "Habitat Suitability") + 
-  #   geom_label(aes(x = 0.1, y = 0.95*max(boyce_df$F.ratio)),
-  #              label = paste0("Correlation: ",unique(boyce_df$cor)), color = 'purple')
   
   # Check for output folder; if it exists already, delete contents.
   output_fn = paste0(output_folder,"/",species_name,"_results/")
@@ -313,9 +252,7 @@ run_maxent = function(species,
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
                   plot = predictions_plot,
                   dpi = 300, width = 8, height = 8)
-  # ggplot2::ggsave(filename = paste0(output_fn,"Boyce_index_plot.png"),
-  #                 plot = boyce_plot,
-  #                 dpi = 300, width = 6, height = 6)
+
   cat("\nFiles written to output folder...\n")
   
   list(model_fit = me,
