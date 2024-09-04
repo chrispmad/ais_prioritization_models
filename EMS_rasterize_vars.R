@@ -12,7 +12,8 @@ library(terra)
 library(raster)
 
 variable_to_search <- "Temperature"
-year_to_search<-2023
+#year_to_search<-2023
+year_to_search<-"All"
 
 path_to_user = str_extract(getwd(), ".*Users/[A-Z]+")
 onedrive_path = paste0(path_to_user,"/OneDrive - Government of BC/data/CNF/")
@@ -26,6 +27,7 @@ conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
 
 test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",variable_to_search,"%'"))
 
+dbDisconnect()
 # pH <-dbGetQuery(conn, "select * from results where parameter like 'pH' and strftime('&Y', COLLECTION_DATE) >= 2022")
 
 ##date column - collection start and collection end - if need date specific - convert back to datetime
@@ -45,10 +47,10 @@ tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
 #class(tempSF$COLLECTION_DATE[1])
 #summary(tempSF$COLLECTION_DATE)
 
-temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") &
-                   tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>%
-          filter(!is.na(MONITORING_LOCATION))
-#temp2024<-tempSF
+# temp2024<-tempSF[tempSF$COLLECTION_DATE >= paste0(as.character(year_to_search),"-01-01") &
+#                    tempSF$COLLECTION_DATE < paste0(as.character(year_to_search+1),"-01-01"),] %>%
+#           filter(!is.na(MONITORING_LOCATION))
+temp2024<-tempSF
 
 ggplot() + geom_histogram(data = temp2024, aes(COLLECTION_DATE))
 
@@ -86,29 +88,6 @@ ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col
 
 results_albers_as_centroids_no_na = results_albers_as_centroids |> dplyr::filter(!is.na(medianVal))
 
-
-
-
-
-c25 <- c(
-  "dodgerblue2", "#E31A1C", # red
-  "green4",
-  "#6A3D9A", # purple
-  "#FF7F00", # orange
-  "black", "gold1",
-  "skyblue2", "#FB9A99", # lt pink
-  "palegreen2",
-  "#CAB2D6", # lt purple
-  "#FDBF6F", # lt orange
-  "gray70", "khaki2",
-  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
-  "darkturquoise", "green1", "yellow4", "yellow3",
-  "darkorange4", "brown"
-)
-#pie(rep(1, 22), col = c25)
-
-# barplot(table(tempSF$LOCATION_TYPE))
-
 # locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
 #   geom_point()+
 #   scale_color_manual(values = c25[1:length(unique(results$LOCATION_PURPOSE))])+
@@ -131,7 +110,7 @@ c25 <- c(
 #   scale_color_manual(values = c25[1:length(unique(results$LOCATION_TYPE))])+
 #   facet_wrap( ~ LOCATION_PURPOSE, ncol = 3)
 
-river2024<- results #%>% 
+river2024<- results_albers_as_centroids_no_na #%>% 
   #filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK")
 
 
@@ -142,11 +121,19 @@ library(lubridate)
 #   geom_sf(data = river2024, aes(color = RESULT)) +
 #   facet_wrap(~ month(COLLECTION_DATE), ncol = 3)
 
+# filterdata<- river2024 %>% 
+#   filter(medianVal <=40 | medianVal <=-10)
 
-p1<-ggplot()+
-  geom_point(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
-  geom_line(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
-  facet_wrap(~ (MONITORING_LOCATION), ncol = 5)
+
+P0<-ggplot(data = filterdata)+
+  geom_point(aes(x=COLLECTION_DATE, y = medianVal))
+P0
+
+
+# p1<-ggplot()+
+#   geom_point(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
+#   geom_line(data = river2024, aes(x = COLLECTION_DATE, y = RESULT, color = RESULT))+
+#   facet_wrap(~ (MONITORING_LOCATION), ncol = 5)
 
 #ggsave("./images/monitoringlocs.png",p1, height = 400, units = "cm", limitsize = F)
 
@@ -222,17 +209,16 @@ interp_r = terra::mask(interp_r, bc_vect_alb)
 plot(interp_r)
 # bc_rast<-rasterize(as.data.frame(bc_vect),grid10km)
 
-# library(snow)
-# beginCluster(n = 6)
-# KRca_interpolation_raster_mt <- clusterR(grid10km, interpolate, args=list(KRvarmod))
-# plot(KRca_interpolation_raster_mt)
-# endCluster()
 
 # #convert output to rasters and save 
 KRVar_interpolation_raster <- raster(KRVar_interpolation) 
 plot(KRVar_interpolation_raster)
 
 spatRast<-rast(KRVar_interpolation_raster)
+
+KRVar_interpolation_vairance_raster<-raster(KRVar_interpolation, layer = "var1.var")
+spatRastVar<-rast(KRVar_interpolation_vairance_raster)
+
 
 #KRca_interpolation_variance_raster <- raster(KRca_interpolation, layer = "var1.var") 
 #KrigRast<-terra::rast(KRca_interpolation_raster_mt)
@@ -241,7 +227,18 @@ spatRast<-rast(KRVar_interpolation_raster)
 # KrigRast<-terra::crop(KRVar_interpolation_raster, bc_vect)
 # KrigRast<-terra::mask(KrigRast, bc_vect_alb)
 
-plot(KrigRast)
-plot(tointerp, add = T)
+#plot(KrigRast)
+#plot(tointerp, add = T)
+dev.off()
 
-writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"), overwrite = T)
+plot(spatRast)
+
+croppedSpat<- crop(spatRast, bc_vect_alb)
+maskedspat<-mask(croppedSpat, bc_vect_alb)
+plot(maskedspat)
+
+
+#writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"), overwrite = T)
+new_path <- gsub("CNF/", "", onedrive_path)
+terra::writeRaster(spatRast, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_krig.tif"))
+terra::writeRaster(spatRastVar, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_var_krig.tif"))
