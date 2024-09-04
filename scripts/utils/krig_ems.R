@@ -14,6 +14,8 @@ library(lubridate)
 
 krig_ems<-function(var_name){
   
+  year_to_search = 'All'
+  
   bc = bcmaps::bc_bound() |> 
     dplyr::summarise() |> 
     terra::vect()
