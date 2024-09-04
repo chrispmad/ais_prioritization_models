@@ -48,23 +48,30 @@ prep_predictor_data = function(proj_path,
   
   cmidata<-geodata::cmip6_world("ACCESS-CM2", ssp = "585", var = "bioc", res = 5, time = "2021-2040",path= paste0(proj_path,"/CMI/"))
   names(cmidata)<-renames
-  # pred_bioc = terra::rast(paste0(proj_path,"/CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif"))
-  # names(pred_bioc)<-renames
   
-  # Pull in elevation raster with {elevatr}
-  # elev = suppressMessages(elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 4)) |>
-  #   terra::rast() |> 
-  #   terra::crop(bc_vect) |> 
-  #   terra::mask(bc_vect)
+  # Elevation
   elev = terra::rast(paste0(onedrive_path,"CNF/elevation_BC.tif"))
   
   names(elev) = "elev"
+  
+  # Bring in waterbody connectivity
+  wb_conn = terra::rast(paste0(onedrive_path,"CNF/stream_order_three_plus_raster.tif"))
+  
+  # Bring in masked rasters from the 'raster/' data folder.
+  interpolated_raster_filepaths = list.files(path = paste0(onedrive_path,"raster/"),
+             pattern = ".*masked_krig",
+             full.names = T)
+  
+  interpolated_rasts = interpolated_raster_filepaths |> 
+    lapply(terra::rast)
   
   print("Combining rasters...")
   
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
                  ph_NAM,Calc_NAM,roads,elev,pop_dens)
+  
+  rasters = append(rasters, interpolated_rasts)
   
   # Cut our rasters down to just BC.
   rasters = rasters |> 
