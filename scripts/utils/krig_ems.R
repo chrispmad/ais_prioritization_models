@@ -36,7 +36,7 @@ krig_ems<-function(var_name){
   raw_data<-raw_data[!is.na(raw_data$LONGITUDE),]
   
   data_sf<-st_as_sf(raw_data, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
-  data_sf$COLLECTION_DATE<-as.Date(data_sf$COLLECTION_DATE)
+  # data_sf$COLLECTION_DATE<-as.Date(data_sf$COLLECTION_DATE)
   
   results<-data_sf %>%
     dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
