@@ -71,8 +71,6 @@ krig_ems<-function(var_name){
   
   results_albers_as_centroids_no_na = results_albers_as_centroids |> dplyr::filter(!is.na(medianVal))
   
-  
-  
   toInterp<-st_transform(results_albers_as_centroids_no_na, 3005)
   
   tointerpPt<- toInterp %>% 
@@ -91,21 +89,22 @@ krig_ems<-function(var_name){
   #terra::plot(pred_bioc_clipped$bio01)
   
   ref = pred_bioc_clipped$bio01
-  values(ref)<-1
+
+  # ext_ref <- ext(ref)
+  # res_ref <- res(ref)
+  # x_seq <- seq(from = ext_ref[1], to = ext_ref[2], by = res_ref[1])
+  # y_seq <- seq(from = ext_ref[3], to = ext_ref[4], by = res_ref[2])
+  # grid10km <- expand.grid(x = x_seq, y = y_seq)
+  # grid10km <- rast(grid10km, crs = crs(ref))
+  # grid10km$nlyr<-1
   
-  ext_ref <- ext(ref)
-  res_ref <- res(ref)
-  x_seq <- seq(from = ext_ref[1], to = ext_ref[2], by = res_ref[1])
-  y_seq <- seq(from = ext_ref[3], to = ext_ref[4], by = res_ref[2])
-  grid10km <- expand.grid(x = x_seq, y = y_seq)
-  grid10km <- rast(grid10km, crs = crs(ref))
-  grid10km$nlyr<-1
+  # grid10km = terra::resample(grid10km, ref)
   
   #grid10km<-raster(grid10km)
-  st_crs(results_albers_as_centroids_no_na)
+  # st_crs(results_albers_as_centroids_no_na)
   pointscrs<-st_transform(results_albers_as_centroids_no_na,4326)
-  st_crs(grid10km)
-  st_crs(pointscrs)
+  # st_crs(grid10km)
+  # st_crs(pointscrs)
   varKRVar <- autofitVariogram(medianVal ~ 1, 
                                as(pointscrs, "Spatial"),
                                verbose=TRUE,
@@ -116,23 +115,24 @@ krig_ems<-function(var_name){
                     model=varKRVar$var_model
   )
   
-  KRgrid10km <- as(raster(grid10km), "SpatialGrid")
+  KRgrid10km <- as(raster(ref), "SpatialGrid")
   KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
   
   interp_r = terra::rast(KRVar_interpolation)
-  interp_r = terra::mask(interp_r, bc_vect_alb)
+  maskrast = terra::mask(interp_r$var1.pred, ref)
   
   KRVar_interpolation_raster <- raster(KRVar_interpolation) 
   plot(KRVar_interpolation_raster)
   
   spatRast<-rast(KRVar_interpolation_raster)
   
-  testrast<-crop(spatRast, bc_vect)
-  maskrast<-mask(testrast, bc_vect)
-  plot(maskrast)
+  # testrast<-crop(spatRast, bc_vect)
+  # maskrast<-mask(testrast, bc_vect)
+  # plot(maskrast)
   
-  KRVar_interpolation_vairance_raster<-raster(KRVar_interpolation, layer = "var1.var")
-  spatRastVar<-rast(KRVar_interpolation_vairance_raster)
+  KRVar_interpolation_variance_raster<-raster(KRVar_interpolation, layer = "var1.var")
+  spatRastVar<-rast(KRVar_interpolation_variance_raster)
+  
   var_save<-gsub(" ", "_", var_name)
   new_path <- gsub("CNF/", "", onedrive_path)
   
