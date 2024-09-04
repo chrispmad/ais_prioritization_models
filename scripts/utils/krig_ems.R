@@ -28,17 +28,17 @@ krig_ems<-function(var_name){
   
   conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
   
-  test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",var_name,"%'"))
+  raw_data<-dbGetQuery(conn, paste0("select * from results where parameter like '%",var_name,"%'"))
   
   dbDisconnect(conn)
   
-  test1<-test1[!is.na(test1$LATITUDE),]
-  test1<-test1[!is.na(test1$LONGITUDE),]
+  raw_data<-raw_data[!is.na(raw_data$LATITUDE),]
+  raw_data<-raw_data[!is.na(raw_data$LONGITUDE),]
   
-  tempSF<-st_as_sf(test1, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
-  tempSF$COLLECTION_DATE<-as.Date(tempSF$COLLECTION_DATE)
+  data_sf<-st_as_sf(raw_data, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
+  data_sf$COLLECTION_DATE<-as.Date(data_sf$COLLECTION_DATE)
   
-  results<-tempSF %>%
+  results<-data_sf %>%
     dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
     dplyr::filter(!is.na(RESULT)) %>% 
     dplyr::filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK" |
@@ -66,7 +66,12 @@ krig_ems<-function(var_name){
   
   ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col = medianVal))
   
+  #for turbidity
+  #results_albers_as_centroids <- results_albers_as_centroids %>% filter(medianVal < 500)
+  
   results_albers_as_centroids_no_na = results_albers_as_centroids |> dplyr::filter(!is.na(medianVal))
+  
+  
   
   toInterp<-st_transform(results_albers_as_centroids_no_na, 3005)
   
@@ -86,11 +91,6 @@ krig_ems<-function(var_name){
   #terra::plot(pred_bioc_clipped$bio01)
   
   ref = pred_bioc_clipped$bio01
-  
-  #### Don't project
-  
-  
-  #ref <- terra::project(ref, "EPSG:3005")
   values(ref)<-1
   
   ext_ref <- ext(ref)
@@ -100,17 +100,12 @@ krig_ems<-function(var_name){
   grid10km <- expand.grid(x = x_seq, y = y_seq)
   grid10km <- rast(grid10km, crs = crs(ref))
   grid10km$nlyr<-1
-  #names(grid10km)<-"z"
-  grid10km<-raster(grid10km)
-  # grid10km <- expand.grid(
-  #   height = ) %>%
-  #   mutate(Z = 0)  %>%
-  #   raster::rasterFromXYZ(crs = 3005)
   
+  #grid10km<-raster(grid10km)
   st_crs(results_albers_as_centroids_no_na)
   pointscrs<-st_transform(results_albers_as_centroids_no_na,4326)
-  # st_crs(grid10km)
-  # st_crs(pointscrs)
+  st_crs(grid10km)
+  st_crs(pointscrs)
   varKRVar <- autofitVariogram(medianVal ~ 1, 
                                as(pointscrs, "Spatial"),
                                verbose=TRUE,
@@ -121,7 +116,7 @@ krig_ems<-function(var_name){
                     model=varKRVar$var_model
   )
   
-  KRgrid10km <- as(grid10km, "SpatialGrid")
+  KRgrid10km <- as(raster(grid10km), "SpatialGrid")
   KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
   
   interp_r = terra::rast(KRVar_interpolation)
@@ -132,11 +127,18 @@ krig_ems<-function(var_name){
   
   spatRast<-rast(KRVar_interpolation_raster)
   
+  testrast<-crop(spatRast, bc_vect)
+  maskrast<-mask(testrast, bc_vect)
+  plot(maskrast)
+  
   KRVar_interpolation_vairance_raster<-raster(KRVar_interpolation, layer = "var1.var")
   spatRastVar<-rast(KRVar_interpolation_vairance_raster)
   var_save<-gsub(" ", "_", var_name)
   new_path <- gsub("CNF/", "", onedrive_path)
+  
+  
   terra::writeRaster(spatRast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_krig.tif"), overwrite = T)
   terra::writeRaster(spatRastVar, paste0(new_path,"raster/",var_save,"_",year_to_search,"_var_krig.tif"), overwrite = T)
+  terra::writeRaster(maskrast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_masked_krig.tif"), overwrite = T)
   
 }
