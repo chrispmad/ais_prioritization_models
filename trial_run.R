@@ -51,7 +51,9 @@ if(!file.exists("data/goldfish_example_data.rds")){
   goldfish = readRDS("data/goldfish_example_data.rds")
 }
 
-# pumkinseed = bcinvadeR::grab_aq_occ_data('pumpkinseed')
+pumpkinseed = bcinvadeR::grab_aq_occ_data('pumpkinseed')
+smb = bcinvadeR::grab_aq_occ_data('smallmouth bass')
+
 # freshwaterjelly = bcinvadeR::grab_aq_occ_data('freshwater jellyfish')
 # freshwaterjelly2 = bcinvadeR::grab_aq_occ_data('common freshwater jellyfish')
 # freshwaterjelly = dplyr::bind_rows(freshwaterjelly, freshwaterjelly2)
@@ -64,13 +66,18 @@ goldfish_results = run_maxent(species = goldfish,
                               number_pseudoabsences = 10000
                               )
 
-# pumkinseed_results = run_maxent(species = pumkinseed, 
-#                                 predictor_data = predictor_data,
-#                                 onedrive_path = onedrive_wd)
-# 
-# jellyfish_results = run_maxent(species = freshwaterjelly, 
-#                                 predictor_data = predictor_data,
-#                                 onedrive_path = onedrive_wd)
+pumkinseed_results = run_maxent(species = pumpkinseed, 
+                              predictor_data = predictor_data,
+                              onedrive_path = onedrive_wd,
+                              number_pseudoabsences = 10000
+)
+
+smb_results = run_maxent(species = smb, 
+                              predictor_data = predictor_data,
+                              onedrive_path = onedrive_wd,
+                              number_pseudoabsences = 10000
+)
+
 
 goldfish_results$maxent_results
 
