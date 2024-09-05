@@ -65,19 +65,50 @@ prep_predictor_data = function(proj_path,
   interpolated_rasts = interpolated_raster_filepaths |> 
     lapply(terra::rast)
   
-  print("Combining rasters...")
+  raster_names = list.files(path = paste0(onedrive_path,"raster/"),
+                            pattern = ".*masked_krig") |> 
+    stringr::str_remove_all("_All.*")
   
-  rasters = list(cmidata$Annual_Mean_Temperature,
-                 cmidata$Annual_Precipitation,
-                 ph_NAM,Calc_NAM,roads,elev,pop_dens)
+  names(interpolated_rasts) = raster_names
   
-  rasters = append(rasters, interpolated_rasts)
-  
-  # Cut our rasters down to just BC.
-  rasters = rasters |> 
-    lapply(\(x) {
-      terra::mask(terra::crop(x, bc_vect), bc_vect)
-    })
+  # Make sure the actual variable name inside each raster is the same
+  # name as the raster... instead of being 'var1.predict' or whatever it starts out life as.
+  interpolated_rasts = purrr::map2(interpolated_rasts, names(interpolated_rasts), ~ {
+    names(.x) = .y
+    .x
+  })
+  # # Combine rasters that code for very similar things... e.g. dissolved or not explicitly dissolved...
+  # unique_rasters = data.frame(group_name = unlist(unique(stringr::str_extract(raster_names,"((_)?[a-zA-Z])*"))))
+  # 
+  # unique_rasters = unique_rasters |> 
+  #   dplyr::mutate(group_id = row_number())
+  # 
+  # raster_groups = data.frame(raster_name = raster_names) |> 
+  #   dplyr::rowwise() |> 
+  #   dplyr::mutate(group_id = unique_rasters[stringr::str_detect(raster_name, unique_rasters$group_name),]$group_id) |> 
+  #   dplyr::ungroup()
+  # 
+  # print("Combining rasters...")
+  # 
+  # unique_rasters$group_id |> 
+  #   purrr::map( ~ {
+  #     the_r = interpolated_rasts[c(raster_groups[raster_groups$group_id == i,]$raster_name)]
+  #     # Combine rasters in the same group.
+  #     Reduce(x = the_r, f = '+')
+  #     names(the_r) = unique_rasters[i,]$group_name
+  #   })
+  # 
+  # rasters = list(cmidata$Annual_Mean_Temperature,
+  #                cmidata$Annual_Precipitation,
+  #                ph_NAM,Calc_NAM,roads,elev,pop_dens)
+  # 
+  # rasters = append(rasters, interpolated_rasts)
+  # 
+  # # Cut our rasters down to just BC.
+  # rasters = rasters |> 
+  #   lapply(\(x) {
+  #     terra::mask(terra::crop(x, bc_vect), bc_vect)
+  #   })
   
   # Resample to ensure same resolution as bioclim variables.
   rasters = rasters |> 
