@@ -15,6 +15,7 @@ library(ENMeval)
 
 regularisation_levels = c(1:2); feature_classes = c("L","LQ"); number_pseudoabsences<-1000
 
+habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
 
 
 #set locations
@@ -146,15 +147,19 @@ predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
 
 eval_model<- eval.models(me)[[opt.aicc$tune.args]]
 
-
 dismo::response(eval_model)
 r1<-response(eval_model, var = "Annual_Mean_Temperature")
 
 plot(r1)
 axis(side = 1, at = eval_model@presence$Annual_Mean_Temperature, col = "blue", las = 2, pos = -0.02)
 
-longList<-names(predictor_data) %>% 
+# Replace parentheses in predictor data names with periods. 
+# This happens in the depths of MaxEnt to our variable names.
+predictor_data_names = stringr::str_replace_all(names(predictor_data),"(\\(|\\))","\\.")
+
+longList <- predictor_data_names %>% 
   purrr::map( ~ {
+    # if(.x == "Nitrate(NO3)_plus_Nitrite(NO2)_Dissolved") browser()
     xy_points = dismo::response(eval_model, var = .x) %>% 
       as.data.frame() %>% 
       dplyr::mutate(variable = .x) %>% 
@@ -163,7 +168,19 @@ longList<-names(predictor_data) %>%
   dplyr::bind_rows() %>% 
   tidyr::as_tibble()
 
+# Who are our presence points?
+presence_indices = row.names(eval_model@presence)
+longList$is_presence = FALSE
+longList[presence_indices,]$is_presence = TRUE
 
+longList |> 
+  ggplot() + 
+  geom_line(aes(x=X, y=Y,group=variable), col = 'red', linewidth = 1) +
+  geom_segment(aes(x=X,xend=X,y=0,yend=0.1,alpha=is_presence), col = 'blue') + 
+  scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0)) +
+  facet_wrap( ~ variable, scales = 'free_x') +
+  ggthemes::theme_clean() +
+  theme(legend.position = 'none')
 
 
 ggplot(data = longList)+
@@ -234,6 +251,7 @@ train_auc = maxent_results$auc.train
 metrics_caption = var_importance |> 
   dplyr::select(variable, percent.contribution) |> 
   dplyr::arrange(dplyr::desc(percent.contribution)) |> 
+  dplyr::slice(1:5) |> 
   dplyr::mutate(title_metric = stringr::str_replace_all(variable,"_"," ")) |>
   dplyr::rowwise() |>
   dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(percent.contribution,2),"%")) |>
