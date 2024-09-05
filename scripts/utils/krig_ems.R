@@ -82,14 +82,16 @@ krig_ems<-function(var_name){
   
   
   # Bring in raster for reference (dimensions, extent, etc.)
-  pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
+  # pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
   bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-  pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
+  # pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
   
   #terra::plot(pred_bioc_clipped$bio01)
   
-  ref = pred_bioc_clipped$bio01
+  # ref = pred_bioc_clipped$bio01
 
+  ref = terra::rast(paste0(onedrive_path, "reference_raster_wgs84_500_by_1000m_res.tif"))
+  
   # ext_ref <- ext(ref)
   # res_ref <- res(ref)
   # x_seq <- seq(from = ext_ref[1], to = ext_ref[2], by = res_ref[1])
