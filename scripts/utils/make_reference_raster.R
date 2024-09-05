@@ -16,7 +16,7 @@ bc = vect(bc)
 
 terra::plot(bc)
 
-bc_r = rast(bc, nrows = 1400, 3000)
+bc_r = rast(bc, nrows = 420, ncols = 900)
 
 bc_r = terra::rasterize(bc, bc_r)
 
@@ -24,4 +24,4 @@ bc_r = terra::project(bc_r, "EPSG:4326")
 
 terra::plot(bc_r)
 
-terra::writeRaster(bc_r, paste0(onedrive_wd,"reference_raster_wgs84_500_by_1000m_res.tif"))
+terra::writeRaster(bc_r, paste0(onedrive_wd,"reference_raster_wgs84.tif"), overwrite = T)

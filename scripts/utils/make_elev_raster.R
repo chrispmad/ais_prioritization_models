@@ -13,7 +13,7 @@ bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
 # terra::plot(pred_bioc_clipped$bio01)
 
 # ref = pred_bioc_clipped$bio01
-ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84_500_by_1000m_res.tif"))
+ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84.tif"))
 
 # Read in elevation
 elev = elevatr::get_elev_raster(locations = sf::st_as_sf(bc_vect), z = 9) |> 

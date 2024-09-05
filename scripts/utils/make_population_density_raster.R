@@ -82,7 +82,7 @@ ggplot() + geom_sf(data = mun_w_d, aes(fill = total))
 # 
 # ref = pred_bioc_clipped$bio01
 
-ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84_500_by_1000m_res.tif"))
+ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84.tif"))
 
 # Rasterize the population density.
 mun_w_d = sf::st_transform(mun_w_d, 4326) # Transform

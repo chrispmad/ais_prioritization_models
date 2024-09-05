@@ -90,7 +90,7 @@ krig_ems<-function(var_name){
   
   # ref = pred_bioc_clipped$bio01
 
-  ref = terra::rast(paste0(onedrive_path, "reference_raster_wgs84_500_by_1000m_res.tif"))
+  ref = terra::rast(paste0(onedrive_path, "reference_raster_wgs84.tif"))
   
   # ext_ref <- ext(ref)
   # res_ref <- res(ref)

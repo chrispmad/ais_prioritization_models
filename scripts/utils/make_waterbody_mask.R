@@ -22,7 +22,7 @@ bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
 # pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
 # ref = pred_bioc_clipped$bio01
 # terra::plot(ref)
-ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84_500_by_1000m_res.tif"))
+ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84.tif"))
 
 rm(pred_bioc_clipped)
 
