@@ -89,7 +89,7 @@ krig_ems<-function(var_name){
   #terra::plot(pred_bioc_clipped$bio01)
   
   # ref = pred_bioc_clipped$bio01
-
+  
   ref = terra::rast(paste0(onedrive_path, "reference_raster_wgs84.tif"))
   
   # ext_ref <- ext(ref)
@@ -118,29 +118,42 @@ krig_ems<-function(var_name){
   )
   
   KRgrid10km <- as(raster(ref), "SpatialGrid")
-  KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
+  #KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
   
-  interp_r = terra::rast(KRVar_interpolation)
-  maskrast = terra::mask(interp_r$var1.pred, ref)
+  # interp_r = terra::rast(KRVar_interpolation)
+  # maskrast = terra::mask(interp_r$var1.pred, ref)
+  # 
+  # KRVar_interpolation_raster <- raster(KRVar_interpolation) 
+  # plot(KRVar_interpolation_raster)
+  # 
+  # spatRast<-rast(KRVar_interpolation_raster)
+  # 
+  # # testrast<-crop(spatRast, bc_vect)
+  # # maskrast<-mask(testrast, bc_vect)
+  # # plot(maskrast)
+  # 
+  # KRVar_interpolation_variance_raster<-raster(KRVar_interpolation, layer = "var1.var")
+  # spatRastVar<-rast(KRVar_interpolation_variance_raster)
   
-  KRVar_interpolation_raster <- raster(KRVar_interpolation) 
-  plot(KRVar_interpolation_raster)
+  library(snow)
   
+  beginCluster(n = 6)
+  
+  krig_rast<-clusterR(KRgrid10km, interpolate, args = list(KRvarmod))
+  
+  endCluster()
   spatRast<-rast(KRVar_interpolation_raster)
   
-  # testrast<-crop(spatRast, bc_vect)
-  # maskrast<-mask(testrast, bc_vect)
-  # plot(maskrast)
+  testrast<-crop(spatRast, bc_vect)
+  maskrast<-mask(testrast, bc_vect)
   
-  KRVar_interpolation_variance_raster<-raster(KRVar_interpolation, layer = "var1.var")
-  spatRastVar<-rast(KRVar_interpolation_variance_raster)
   
   var_save<-gsub(" ", "_", var_name)
   new_path <- gsub("CNF/", "", onedrive_path)
   
   
   terra::writeRaster(spatRast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_krig.tif"), overwrite = T)
-  terra::writeRaster(spatRastVar, paste0(new_path,"raster/",var_save,"_",year_to_search,"_var_krig.tif"), overwrite = T)
+  #terra::writeRaster(spatRastVar, paste0(new_path,"raster/",var_save,"_",year_to_search,"_var_krig.tif"), overwrite = T)
   terra::writeRaster(maskrast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_masked_krig.tif"), overwrite = T)
   
 }
