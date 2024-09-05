@@ -69,6 +69,12 @@ prep_predictor_data = function(proj_path,
                             pattern = ".*masked_krig") |> 
     stringr::str_remove_all("_All.*")
   
+  # Replace 'Temperature' with 'Water Temperature'
+  raster_names[raster_names == 'Temperature'] = 'Water_Temperature'
+  
+  # Replace any instances of '+' with 'plus'
+  raster_names = stringr::str_replace_all(raster_names,"\\+","plus")
+  
   names(interpolated_rasts) = raster_names
   
   # Make sure the actual variable name inside each raster is the same
@@ -98,17 +104,17 @@ prep_predictor_data = function(proj_path,
   #     names(the_r) = unique_rasters[i,]$group_name
   #   })
   # 
-  # rasters = list(cmidata$Annual_Mean_Temperature,
-  #                cmidata$Annual_Precipitation,
-  #                ph_NAM,Calc_NAM,roads,elev,pop_dens)
-  # 
-  # rasters = append(rasters, interpolated_rasts)
-  # 
-  # # Cut our rasters down to just BC.
-  # rasters = rasters |> 
-  #   lapply(\(x) {
-  #     terra::mask(terra::crop(x, bc_vect), bc_vect)
-  #   })
+  rasters = list(cmidata$Annual_Mean_Temperature,
+                 cmidata$Annual_Precipitation,
+                 ph_NAM,Calc_NAM,roads,elev,pop_dens)
+
+  rasters = append(rasters, interpolated_rasts)
+
+  # Cut our rasters down to just BC.
+  rasters = rasters |>
+    lapply(\(x) {
+      terra::mask(terra::crop(x, bc_vect), bc_vect)
+    })
   
   # Resample to ensure same resolution as bioclim variables.
   rasters = rasters |> 
