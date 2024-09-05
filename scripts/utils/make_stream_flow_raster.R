@@ -6,13 +6,14 @@ proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/CNF/")
 
 # Bring in raster for reference (dimensions, extent, etc.)
-pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
+# pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
 bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
+# pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
 
-terra::plot(pred_bioc_clipped$bio01)
+# terra::plot(pred_bioc_clipped$bio01)
 
-ref = pred_bioc_clipped$bio01
+# ref = pred_bioc_clipped$bio01
+ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84_500_by_1000m_res.tif"))
 
 # Read in Ron's data (tied to water survey Canada stations).
 

@@ -17,11 +17,13 @@ bc = bcmaps::bc_bound() |>
 bbox <- sf::st_bbox(st_as_sf(bc))
 
 # Bring in raster for reference (dimensions, extent, etc.)
-pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
+# pred_bioc = terra::rast("CMI/climate/wc2.1_5m/wc2.1_5m_bioc_ACCESS-CM2_ssp585_2021-2040.tif")
 bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
-ref = pred_bioc_clipped$bio01
-terra::plot(ref)
+# pred_bioc_clipped = mask(crop(pred_bioc, bc_vect), bc_vect)
+# ref = pred_bioc_clipped$bio01
+# terra::plot(ref)
+ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84_500_by_1000m_res.tif"))
+
 rm(pred_bioc_clipped)
 
 ws = sf::read_sf(paste0(onedrive_path,'CNF/watershed_groups.gpkg'))
