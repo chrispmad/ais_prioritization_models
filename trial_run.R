@@ -52,13 +52,14 @@ if(!file.exists("data/goldfish_example_data.rds")){
 }
 
 pumpkinseed = bcinvadeR::grab_aq_occ_data('pumpkinseed')
+pumpkinseed_sf = bcinvadeR::grab_aq_occ_data('pumpkinseed sunfish')
+pumpkinseed = dplyr::bind_rows(pumpkinseed,pumpkinseed_sf)
+rm(pumpkinseed_sf)
 smb = bcinvadeR::grab_aq_occ_data('smallmouth bass')
 
 # freshwaterjelly = bcinvadeR::grab_aq_occ_data('freshwater jellyfish')
 # freshwaterjelly2 = bcinvadeR::grab_aq_occ_data('common freshwater jellyfish')
 # freshwaterjelly = dplyr::bind_rows(freshwaterjelly, freshwaterjelly2)
-
-source("scripts/utils/run_maxent_f.R")
 
 goldfish_results = run_maxent(species = goldfish, 
                               predictor_data = predictor_data,
