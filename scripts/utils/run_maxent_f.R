@@ -133,6 +133,9 @@ run_maxent = function(species,
   
   predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
   
+  eval_model<- eval.models(me)[[opt.aicc$tune.args]]
+  
+  eval_plot<-eval_model
   # Pull out maxent's predictions for occurrence locations.
 
   # Check out results - this dataframe could be simplified to just hone in 
@@ -260,6 +263,7 @@ run_maxent = function(species,
        key_metrics = key_metrics,
        predictions_r = predictions,
        predictions_plot = predictions_plot,
+       eval_plot = eval_plot,
        habitat_predictions = habitat_or_not
   )
 }
