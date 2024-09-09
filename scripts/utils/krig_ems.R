@@ -13,7 +13,6 @@ library(raster)
 library(lubridate)
 
 krig_ems<-function(var_name){
-  
   year_to_search = 'All'
   
   bc = bcmaps::bc_bound() |> 
@@ -139,10 +138,10 @@ krig_ems<-function(var_name){
   
   beginCluster(n = 6)
   
-  krig_rast<-clusterR(KRgrid10km, interpolate, args = list(KRvarmod))
+  krig_rast<-clusterR(raster(ref), interpolate, args = list(KRvarmod))
   
   endCluster()
-  spatRast<-rast(KRVar_interpolation_raster)
+  spatRast<-rast(krig_rast)
   
   testrast<-crop(spatRast, bc_vect)
   maskrast<-mask(testrast, bc_vect)
