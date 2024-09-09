@@ -298,26 +298,30 @@ metrics_caption = var_importance |>
   dplyr::ungroup() |>
   dplyr::summarise(paste0(v, collapse = '<br>'))
 
+
+
 predictions_plot = ggplot() + 
   tidyterra::geom_spatraster(data = predictions) + 
-  geom_sf(data = points_sf, aes(col = type, alpha = type)) +
+   geom_sf(data = points_sf, aes(col = type, alpha = type)) +
   scale_colour_manual(values = c('presence' = "red",
                                  'pseudoabsence' = "purple")) +
   scale_alpha_manual(values = c('presence' = 1,
                                 'pseudoabsence' = 0.1),
                      guide = 'none') +
-  scale_fill_viridis_c() + 
+  scale_fill_viridis_c() +
   labs(title = paste0(stringr::str_to_title(species_name)),
        subtitle = paste0("Number of Training Data Points: ",train_samp,
                          "<br>Training Area-Under-Curve: ",round(as.numeric(train_auc),4)),
        caption = metrics_caption,
        fill = "Predicted \nRelative \nSuitability",
-       color = "Sample Type") + 
+       color = "Sample Type") +
   theme(
     plot.subtitle = ggtext::element_markdown(),
     plot.caption = ggtext::element_markdown()
   )
 
+
+rayshader::plot_gg(predictions_plot)
 # Predicted habitat vs. not habitat plot, using 
 # whichever threshold approach selected in function call.
 habitat_or_not = me@predictions[[opt.aicc$tune.args]]
