@@ -20,6 +20,12 @@ prep_predictor_data = function(proj_path,
   pop_dens = terra::rast(paste0(onedrive_path,"CNF/population_density_raster.tif"))
   names(pop_dens) = "population_density"
   
+  # Pull in watercraft destination waterbodies (from Invasive Mussel Defence Program inspections)
+  boat_dests = terra::rast(paste0(onedrive_path,"CNF/watercraft_visits_all_years.tif"))
+  
+  # Pull in DFO 2023 Angler Survey data - Sum of Days Fished
+  days_fished = terra::rast(paste0(onedrive_path,"CNF/DFO_angling_survey_days_fished_raster.tif"))
+  
   # Pull in stream order (of streams with stream order 3+), 2km resolution.
   # stream_ord = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif"))
   # names(stream_ord) = "stream_order"
@@ -106,7 +112,8 @@ prep_predictor_data = function(proj_path,
   # 
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
-                 ph_NAM,Calc_NAM,roads,elev,pop_dens)
+                 ph_NAM,Calc_NAM,roads,elev,pop_dens,
+                 boat_dests,days_fished)
 
   rasters = append(rasters, interpolated_rasts)
 
