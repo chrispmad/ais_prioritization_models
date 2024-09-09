@@ -72,14 +72,22 @@ bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
 # for aquatic organisms.
 watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
 
+watercourses
 
+
+
+predictor_data$TotalInspections<-subst(predictor_data$TotalInspections, NA, 0)
+predictor_data$days_fished<-subst(predictor_data$days_fished, NA, 0)
+
+watercourses<-crop(watercourses, extentvect)
+watercourses<-mask(watercourses, extentvect)
 for(raster_var in unique(names(predictor_data))){
   dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
                                       dat[,c("x","y")], ID = FALSE)[[raster_var]]
 }
 
 dat_just_pred_vars = sf::st_drop_geometry(dat[,c(names(predictor_data))])
-# Remove samples lacking predictor raster values?
+#Remove samples lacking predictor raster values?
 keep_ind = complete.cases(dat_just_pred_vars)
 dat = dat[keep_ind,]
 
