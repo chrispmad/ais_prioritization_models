@@ -22,5 +22,10 @@ wbs_r = terra::rasterize(wbs, ref, field = "TotalInspections", fun = max)
 
 terra::plot(wbs_r)
 
-terra::writeRaster(x = wbs_r, filename = paste0(onedrive_wd,"watercraft_visits_all_years.tif"))
+# Set area inside BC to be 0; might need to recrop this.
+wbs_r[is.na(wbs_r)] <- 0
+
+wbs_r = terra::mask(wbs_r, ref)
+
+terra::writeRaster(x = wbs_r, filename = paste0(onedrive_wd,"watercraft_visits_all_years.tif"), overwrite = TRUE)
 
