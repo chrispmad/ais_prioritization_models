@@ -25,8 +25,13 @@ onedrive_path = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Gover
 
 source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
+
+extentvect<-terra::vect("./vect/fras_colum.gpkg")
+extentvect<-project(extentvect, "EPSG:4326")
+
 predictor_data = prep_predictor_data(proj_path = proj_wd,
-                                     onedrive_path = paste0(onedrive_wd))
+                                     onedrive_path = paste0(onedrive_wd),
+                                     extentvect)
 
 if(!file.exists("data/goldfish_example_data.rds")){
   goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
