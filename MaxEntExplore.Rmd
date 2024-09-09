@@ -56,6 +56,8 @@ pH and Calcium data are available from Geurin et al. 2024 where they used water 
 # sppOI<-"goldfish"
 sppOI = params$sppOI
 
+sppOI<-"goldfish"
+
 # Get occurrence data for species (if we haven't done this yet!)
 if(!exists("d")){
   d = suppressMessages(grab_aq_occ_data(sppOI))
@@ -195,9 +197,15 @@ ggplot()+
 library(spatstat)
 
 bc_alb<-st_transform(bc_bound(), 3005)
+
 d_alb<-st_transform(d, 3005)
+
 d_alb<- d_alb %>% 
-  dplyr::select(geometry)
+    plyr::mutate(x = st_coordinates(geometry)[,1],
+                     y = st_coordinates(geometry)[,2]) %>% 
+    #sf::st_drop_geometry() |> 
+    dplyr::select(x,y)
+
 
 raster_base <- rast(vect(bc_alb))
 res(raster_base)<-10000
@@ -205,63 +213,75 @@ values(raster_base)<-0
 raster_occ <- rasterize(vect(d_alb), raster_base, fun = "count")
 raster_occ_masked <- mask(raster_occ, raster_base)
 
-# ggplot() +
-#   geom_sf(data = bc_alb, color = "lightgrey", alpha = 0.5)+
-#   geom_raster(data = as.data.frame(raster_occ_masked, xy = TRUE),
-#               aes(x = x, y = y, fill = count)) +
-#   scale_color_viridis_c()+
-#   coord_sf() +
-#   theme_minimal()
-# 
-# 
-# ggplot(data = samp)+
-#   geom_sf(data = st_boundary(bc), fill = "transparent")+
-#   stat_density2d(geom = "polygon", aes(x =x, y= y,fill = after_stat(level)), bins = 4)+
-#   geom_point(aes(x =x, y= y),alpha = 0.1)
-# 
-# 
-# ggplot(data = samp)+
-#   geom_sf(data = st_boundary(bc), fill = "transparent")+
-#   geom_density2d_filled(
-#     aes(x =x, y= y,fill = after_stat(level)),
-#     contour_var = "ndensity",
-#     breaks = seq(0.1, 1, length.out = 10)
-#   )
-# library(MASS)
-x1<-terra::ext(bc_vect)[1];x2<-terra::ext(bc_vect)[2]
-y1<-terra::ext(bc_vect)[3];y2<-terra::ext(bc_vect)[4]
 
-d_alb_kde<-MASS::kde2d(samp$x, samp$y,n=1000, lims = c(x1,x2,y1,y2))
-#image(d_alb_kde)
-smooth_rast<-rast(d_alb_kde)
-terra::crs(smooth_rast)<-"EPSG:4326"
-##cropeed
-#croprast<-terra::project(smooth_rast, "EPSG:4326")
-croprast<-terra::crop(smooth_rast, bc_vect)
-croprast<-terra::mask(smooth_rast, bc_vect)
-#plot(croprast)
-z1<-croprast$lyr.1*nrow(samp) # actual abundances for the raster
+kdePlot<-ggplot()+
+  geom_sf(data= bc_alb)+
+  stat_density2d(aes(x  = x, y = y, fill = after_stat(level)), alpha = .5,
+                 h = 100000,n = 1000,geom = "polygon", data = d_alb)+ 
+  scale_fill_viridis_c()+
+  theme(legend.position = 'none')
+
+ggsave("./images/kdePlot.png",kdePlot, height = 10, width = 12, units = "in")
+
+
+
+bc_alb
+
+library(spatstat)
+ppp_d <- as.ppp(d_alb)
+
+ppp_dens<-density(ppp_d, dimyx = 1000, bw = 1000 , kernel = "epanechnikov")
+plot(ppp_dens)
+plot(ppp_d, add = T)
+Window(ppp_d) <- as.owin(st_transform(bc,3005))  
+#plot(ppp_d, main = "")
+
+density_stars <- stars::st_as_stars(ppp_dens)
+density_sf <- st_as_sf(density_stars) %>%
+  st_set_crs(3005)
+  
 
 ggplot() +
-  geom_sf(data = st_transform(bc,4326), color = "lightgrey", alpha = 0.5)+
-  geom_raster(data = as.data.frame(croprast, xy = TRUE),
-              aes(x = x, y = y, fill = lyr.1)) +
-  scale_fill_viridis_c(name = paste0("Presence of ",sppOI))+
-  coord_sf() +
-  #ggthemes::theme_map()+
-  guides(colour = guide_colourbar(position = "right"))+
-  theme(
-    plot.title = element_text(size = rel(2), face = "bold"),
-    plot.subtitle = element_text(size = rel(1.8)),
-    legend.title = element_text(size = rel(1.8)),
-    legend.text = element_text(size = rel(1.2)),
-    legend.position = 'right',
-    panel.background = element_blank(),
-    legend.key.height = unit(1, "null"),
-    axis.text = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title = element_blank()
-  )
+  geom_sf(data = density_sf, aes(fill = v), col = NA) +
+  scale_fill_viridis_c() +
+  geom_sf(data = st_boundary(bc_alb)) +
+  geom_sf(data = st_transform(d,3005), size = 2, col = "black")
+
+# x1<-terra::ext(bc_vect)[1];x2<-terra::ext(bc_vect)[2]
+# y1<-terra::ext(bc_vect)[3];y2<-terra::ext(bc_vect)[4]
+# 
+# d_alb_kde<-MASS::kde2d(samp$x, samp$y,n=10000, lims = c(x1,x2,y1,y2))
+# #image(d_alb_kde)
+# smooth_rast<-rast(d_alb_kde)
+# terra::crs(smooth_rast)<-"EPSG:4326"
+# ##cropeed
+# #croprast<-terra::project(smooth_rast, "EPSG:4326")
+# croprast<-terra::crop(smooth_rast, bc_vect)
+# croprast<-terra::mask(smooth_rast, bc_vect)
+# plot(croprast)
+# 
+# 
+# 
+# ggplot() +
+#   geom_sf(data = st_transform(bc,4326), color = "lightgrey", alpha = 0.5)+
+#   geom_raster(data = as.data.frame(croprast, xy = TRUE),
+#               aes(x = x, y = y, fill = z1)) +
+#   scale_fill_viridis_c(name = paste0("Presence of ",sppOI))+
+#   coord_sf() +
+#   #ggthemes::theme_map()+
+#   guides(colour = guide_colourbar(position = "right"))+
+#   theme(
+#     plot.title = element_text(size = rel(2), face = "bold"),
+#     plot.subtitle = element_text(size = rel(1.8)),
+#     legend.title = element_text(size = rel(1.8)),
+#     legend.text = element_text(size = rel(1.2)),
+#     legend.position = 'right',
+#     panel.background = element_blank(),
+#     legend.key.height = unit(1, "null"),
+#     axis.text = element_blank(),
+#     axis.ticks = element_blank(),
+#     axis.title = element_blank()
+#   )
 
 
 ```
@@ -276,15 +296,18 @@ Goldfish are found in multiple locations, with a concentration in the south west
 ##### Temperature
 ```{r temp_plots}
 
-ggplot()+
+box_temp<-ggplot()+
 geom_boxplot(data = samp, aes(y = temp))+
+  ylab("Value")+
   labs(title = "Temperature")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 
 ggplot()+
@@ -295,7 +318,9 @@ geom_boxplot(data = samp_thin, aes(y = temp))+
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 
 
@@ -305,15 +330,18 @@ geom_boxplot(data = samp_thin, aes(y = temp))+
 
 ##### Precipitation plots
 ```{r precip_plot}
-ggplot()+
+box_precip<-ggplot()+
 geom_boxplot(data = samp, aes(y = precip))+
+  ylab("Value")+
   labs(title = "Precipitation")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 ggplot()+
 geom_boxplot(data = samp_thin, aes(y = precip))+
@@ -323,64 +351,79 @@ geom_boxplot(data = samp_thin, aes(y = precip))+
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 ```
 
 ##### Calcium plots
 ```{r Ca_plot}
-ggplot()+
+box_ca<-ggplot()+
 geom_boxplot(data = samp, aes(y = calc))+
   labs(title = "Calcium")+
+  ylab("Value")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 
 ggplot()+
 geom_boxplot(data = samp_thin, aes(y = calc))+
+  ylab("Value")+
   labs(title = "Calcium thinned")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 ```
 
 ##### ph plots
 ```{r pH_plot}
-ggplot()+
+box_ph<-ggplot()+
 geom_boxplot(data = samp, aes(y = pH))+
+  ylab("Value")+
   labs(title = "pH")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 
 ggplot()+
 geom_boxplot(data = samp_thin, aes(y = pH))+
+  ylab("Value")+
   labs(title = "pH thinned")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 ```
 
 ##### Elevation plots
 ```{r elev_plot}
-ggplot()+
+box_elev<-ggplot()+
 geom_boxplot(data = samp, aes(y = elev))+
+  ylab("Value")+
   labs(title = "Elev")+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
@@ -388,6 +431,9 @@ geom_boxplot(data = samp, aes(y = elev))+
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
         panel.background = element_blank()
+        ,
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 
 ggplot()+
@@ -398,9 +444,22 @@ geom_boxplot(data = samp_thin, aes(y = elev))+
         legend.title = element_text(size = rel(1.8)),
         legend.text = element_text(size = rel(1.2)),
         legend.position = 'bottom',
-        panel.background = element_blank()
+        panel.background = element_blank(),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold")
         )
 ```
+
+
+```{r}
+
+library(patchwork)
+
+(box_temp | box_precip | box_ca) /
+  (box_ph | box_elev)
+
+```
+
 
 #### Colinearity {.tabset}
 
