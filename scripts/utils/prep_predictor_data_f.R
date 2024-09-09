@@ -1,5 +1,6 @@
 prep_predictor_data = function(proj_path,
-                               onedrive_path){
+                               onedrive_path,
+                               ext_vect){
   
   print("Reading in rasters...")
   
@@ -117,10 +118,11 @@ prep_predictor_data = function(proj_path,
 
   rasters = append(rasters, interpolated_rasts)
 
+  
   # Cut our rasters down to just BC.
   rasters = rasters |>
     lapply(\(x) {
-      terra::mask(terra::crop(x, bc_vect), bc_vect)
+      terra::mask(terra::crop(x, ext_vect), ext_vect)
     })
   
   # Resample to ensure same resolution as bioclim variables.
