@@ -125,7 +125,7 @@ evalplot.envSim.map(sim.type = "most_diff", ref.data = "presences", envs = r_sta
                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, 
                     categoricals = NULL, bb.buf = 7)
 
-
+## Block seems most appropriate, as it splits occurrences as evenly as it can
 me = ENMevaluate(occs = presences, 
                  envs = predictor_data_low_cor, 
                  bg = pseudoabsences, 
@@ -146,7 +146,7 @@ var_importance = me@variable.importance[[opt.aicc$tune.args]]
 predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
 
 eval_model<- eval.models(me)[[opt.aicc$tune.args]]
-
+#eval_model1<-eval_model
 dismo::response(eval_model)
 r1<-response(eval_model, var = "Annual_Mean_Temperature")
 
@@ -169,15 +169,50 @@ longList <- predictor_data_names %>%
   tidyr::as_tibble()
 
 # Who are our presence points?
+
+presence_data<-eval_model@presence
+presence_data$index<-row.names(eval_model@presence)
+library(data.table)
+long_presence<-melt(setDT(presence_data), id.vars = "index")
+names(long_presence)<-c("index", "variable", "X")
+
+lim_vals<-long_presence %>% 
+  group_by(variable) %>% 
+  summarise(max = max(X),
+            min = min(X))
+
+
+
 presence_indices = row.names(eval_model@presence)
 longList$is_presence = FALSE
 longList[presence_indices,]$is_presence = TRUE
 
+plotlist<-list()
+for (i in longList$variable){
+  dt_to_plot<-longList[longList$variable == i,]
+  lng_pres<-long_presence[long_presence$variable == i,]
+  
+  plotlist[[i]]<-response_plot(dt_to_plot, lng_pres)
+}
+
+
+
+plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
+  
+  patchwork::wrap_plots(master_list_with_plots, 
+                        nrow = no_of_rows, ncol = no_of_cols)
+}
+
+plot_a_list(plotlist, 4,4)
+
+
 longList |> 
   ggplot() + 
   geom_line(aes(x=X, y=Y,group=variable), col = 'red', linewidth = 1) +
-  geom_segment(aes(x=X,xend=X,y=0,yend=0.1,alpha=is_presence), col = 'blue') + 
+  geom_segment(data = long_presence, aes(x=X,xend=X,y=0,yend=0.1, group = variable), col = 'blue') + 
   scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0)) +
+  xlim(aes(min(X[variable == ..PANEL..]), max(X[variable == ..PANEL..]))) +
+  #xlim(c(lim_vals$min, lim_vals$max))+
   facet_wrap( ~ variable, scales = 'free_x') +
   ggthemes::theme_clean() +
   theme(legend.position = 'none')
