@@ -12,7 +12,7 @@ library(terra)
 library(raster)
 library(lubridate)
 
-krig_ems<-function(var_name){
+krig_ems<-function(var_name, confidence_interval = 0.99){
   year_to_search = 'All'
   
   bc = bcmaps::bc_bound() |> 
@@ -43,8 +43,30 @@ krig_ems<-function(var_name){
     dplyr::filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK" |
                     LOCATION_TYPE == "MONITORING WELL" |
                     LOCATION_TYPE == "LAKE OR POND")
-  results_albers = sf::st_transform(results, 3005)
   
+  if(confidence_interval != 1){
+    # Find confidence interval for values.
+    conf_int_bounds <- t.test(results$RESULT, conf.level = confidence_interval)$conf.int[c(1:2)]
+    
+    # calculate first quantile
+    Quantile1 <- quantile(results$RESULT, probs=1-confidence_interval)
+    
+    # calculate third quantile
+    Quantile3 <- quantile(results$RESULT, probs=1-(1-confidence_interval))
+    
+    # calculate inter quartile range
+    IQR = Quantile3-Quantile1
+    
+    outliers = results[results$RESULT > Quantile3 + (IQR*1.5) | results$RESULT < Quantile1 - (IQR*1.5),]
+    
+    # Tell user about the number of rows about to be dropped.
+    cat(paste0("\nNote: ",nrow(outliers)," (",round(100*nrow(outliers)/nrow(results),3),
+               "% of all records) outlier data points found outside of the 1st and 99th quantiles (",
+               round(Quantile1,2)," and ",round(Quantile3,2),", respectively)... removed!"))
+    
+    # Find and drop outlier rows
+    results = results[!(results$RESULT > Quantile3 + (IQR*1.5) | results$RESULT < Quantile1 - (IQR*1.5)),]
+  }
   # Simplify our input data so that there is one point of data per 100km^2 raster cell.
   interp_grid = sf::st_make_grid(sf::st_as_sf(bc_vect_alb), cellsize = c(10000,10000)) |> 
     sf::st_as_sf() |> 
