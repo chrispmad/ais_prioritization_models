@@ -56,7 +56,7 @@ pH and Calcium data are available from Geurin et al. 2024 where they used water 
 # sppOI<-"goldfish"
 sppOI = params$sppOI
 
-sppOI<-"goldfish"
+sppOI<-"asian clam"
 
 # Get occurrence data for species (if we haven't done this yet!)
 if(!exists("d")){
