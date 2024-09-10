@@ -33,7 +33,7 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
 
-predictor_data<-terra::subset(predictor_data, c(10,5,9,7,8))
+#predictor_data<-terra::subset(predictor_data, c(10,5,9,7,8))
 #plot(predictor_data)
 #if(!file.exists("data/goldfish_example_data.rds")){
   goldfish = bcinvadeR::grab_aq_occ_data('asian clam')
