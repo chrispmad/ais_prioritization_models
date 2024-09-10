@@ -17,13 +17,22 @@ library(ENMeval)
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
 
+fras = sf::read_sf("W:/CMadsen/shared_data_sets/Fraser_River_Big_Watershed.shp")
+col = sf::read_sf("W:/CMadsen/shared_data_sets/Columbia_River_Big_Watershed.shp")
+
+fras_col = dplyr::bind_rows(fras,col) |> 
+  dplyr::summarise() |> 
+  sf::st_transform(4326) |> 
+  terra::vect()
+
 # Get functions from other scripts.
 
 source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
 
 predictor_data = prep_predictor_data(proj_path = proj_wd,
-                                     onedrive_path = paste0(onedrive_wd))
+                                     onedrive_path = paste0(onedrive_wd),
+                                     ext_vect = fras_col)
 
 if(!file.exists("data/goldfish_example_data.rds")){
   goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
