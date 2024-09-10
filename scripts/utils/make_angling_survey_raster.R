@@ -129,10 +129,6 @@ manage_units_by_zone = manage_units |>
   dplyr::group_by(GMZ,GAME_MANAGEMENT_ZONE_NAME ) |> 
   dplyr::summarise()
 
-manage_units_by_zone |> 
-  sf::st_drop_geometry() |> 
-  View()
-
 days_per_wb_w_zone = days_per_wb_sum |> 
   dplyr::left_join(
     manage_units_by_zone |> sf::st_drop_geometry()
@@ -148,12 +144,6 @@ fished_lakes_w_sum = fished_lakes_polys_w_zone |>
   dplyr::left_join(days_per_wb_w_zone) |> 
   dplyr::rename(days_fished = n)
 
-ggplot() + 
-  geom_sf(data = fished_lakes_w_sum, 
-          aes(fill = days_fished, 
-              col = days_fished)
-  )
-
 # Time to rasterize this!
 fished_lakes_w_sum_vect = fished_lakes_w_sum |> 
   sf::st_transform(crs = 4326) |> 
@@ -163,4 +153,10 @@ fished_lakes_rast = terra::rasterize(fished_lakes_w_sum_vect, ref, field = "days
 
 terra::plot(fished_lakes_rast)
 
-terra::writeRaster(fished_lakes_rast, paste0(onedrive_wd,"DFO_angling_survey_days_fished_raster.tif"))
+fished_lakes_rast[is.na(fished_lakes_rast)] <- 0
+
+fished_lakes_rast = terra::mask(fished_lakes_rast, ref)
+
+terra::writeRaster(fished_lakes_rast, 
+                   paste0(onedrive_wd,"DFO_angling_survey_days_fished_raster.tif"),
+                   overwrite = TRUE)
