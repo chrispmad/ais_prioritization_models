@@ -1,7 +1,7 @@
-response_plot<-function(long_x, long_p){
+response_plot<-function(long_x, long_p,i){
   x_min<-min(long_p$X)
   x_max<-max(long_p$X)
-  
+  plot_name<-i
   l_nudge<-x_max*0.15
   
   
@@ -10,6 +10,7 @@ response_plot<-function(long_x, long_p){
     geom_segment(aes(x=X,xend=X,y=0,yend=0.1), col = 'blue') + 
     scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0)) +
     xlim(c(x_min-l_nudge,x_max+l_nudge))+
+    ggtitle(paste0(i))+
     #facet_wrap( ~ variable, scales = 'free_x') +
     #ggthemes::theme_clean() +
     theme(legend.position = 'none')
