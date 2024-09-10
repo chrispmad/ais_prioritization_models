@@ -12,7 +12,7 @@ source("ZuurFuncs.R")
 library(ecospat)
 library(ENMeval)
 
-
+sppOI<-"Asian clam"
 regularisation_levels = c(1:2); feature_classes = c("L","LQ"); number_pseudoabsences<-1000
 
 habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
@@ -33,8 +33,10 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
 
-if(!file.exists("data/goldfish_example_data.rds")){
-  goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
+predictor_data<-terra::subset(predictor_data, c(10,5,9,7,8))
+#plot(predictor_data)
+#if(!file.exists("data/goldfish_example_data.rds")){
+  goldfish = bcinvadeR::grab_aq_occ_data('asian clam')
 
 
   # Ensure unique coordinates by adding
@@ -54,10 +56,10 @@ if(!file.exists("data/goldfish_example_data.rds")){
   #   addCircleMarkers(data = goldfish_jitter, color = 'red', fillColor = 'red')
 
 
-  saveRDS(goldfish_j, "data/goldfish_example_data.rds")
-} else {
-  goldfish = readRDS("data/goldfish_example_data.rds")
-}
+#   saveRDS(goldfish_j, "data/goldfish_example_data.rds")
+# } else {
+#   goldfish = readRDS("data/goldfish_example_data.rds")
+# }
 
 
 dat = goldfish |> 
@@ -120,23 +122,25 @@ r_stack<-raster::stack(predictor_data)
 occs.z<- cbind(presences, raster::extract(r_stack, presences))
 bg.z <- cbind(pseudoabsences, raster::extract(r_stack, pseudoabsences))
 
-evalplot.envSim.hist(sim.type = "mess", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
-
-evalplot.envSim.hist(sim.type = "most_diff", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
-
-evalplot.envSim.hist(sim.type = "most_sim", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
 
 
-evalplot.envSim.map(sim.type = "mess", ref.data = "presences", envs = r_stack, occs.z = occs.z, 
-                    bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, 
-                    categoricals = NULL, bb.buf = 7)
-
-evalplot.envSim.map(sim.type = "most_diff", ref.data = "presences", envs = r_stack, occs.z = occs.z, 
-                    bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, 
-                    categoricals = NULL, bb.buf = 7)
+# evalplot.envSim.hist(sim.type = "mess", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
+#                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+# 
+# evalplot.envSim.hist(sim.type = "most_diff", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
+#                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+# 
+# evalplot.envSim.hist(sim.type = "most_sim", ref.data = "occs", occs.z = occs.z, bg.z = bg.z, 
+#                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+# 
+# 
+# evalplot.envSim.map(sim.type = "mess", ref.data = "presences", envs = r_stack, occs.z = occs.z, 
+#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, 
+#                     categoricals = NULL, bb.buf = 7)
+# 
+# evalplot.envSim.map(sim.type = "most_diff", ref.data = "presences", envs = r_stack, occs.z = occs.z, 
+#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, 
+#                     categoricals = NULL, bb.buf = 7)
 
 ## Block seems most appropriate, as it splits occurrences as evenly as it can
 me = ENMevaluate(occs = presences, 
@@ -200,12 +204,14 @@ presence_indices = row.names(eval_model@presence)
 longList$is_presence = FALSE
 longList[presence_indices,]$is_presence = TRUE
 
+source("scripts/utils/response_plot.r")
+
 plotlist<-list()
 for (i in longList$variable){
   dt_to_plot<-longList[longList$variable == i,]
   lng_pres<-long_presence[long_presence$variable == i,]
   
-  plotlist[[i]]<-response_plot(dt_to_plot, lng_pres)
+  plotlist[[i]]<-response_plot(dt_to_plot, lng_pres, i)
 }
 
 
@@ -216,7 +222,7 @@ plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
                         nrow = no_of_rows, ncol = no_of_cols)
 }
 
-plot_a_list(plotlist, 4,4)
+plot_a_list(plotlist, 4,5)
 
 
 longList |> 
