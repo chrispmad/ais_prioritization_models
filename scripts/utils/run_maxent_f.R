@@ -49,6 +49,10 @@ run_maxent = function(species,
   # for aquatic organisms.
   watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
   
+  spatial_extent_resampled = terra::resample(predictor_data$dist_to_highways, watercourses)
+  # Crop and mask the watercourses raster to fit our spatial extent.
+  watercourses = terra::mask(terra::crop(watercourses, spatial_extent_resampled),spatial_extent_resampled)
+  
   # If the user has specified a list of predictor variables to use, just keep those.
   if(!is.null(vars_to_use)){
     print(paste0("Constraining predictor raster variables to just: ",paste0(vars_to_use, collapse = ', ')))
