@@ -12,9 +12,12 @@ library(spatstat)
 library(ape)
 library(bcmaps)
 library(data.table)
+library(ENMeval)
 source("ZuurFuncs.R")
 source("scripts/utils/thin_occ.R")
 
+num_bg<-10000
+regularisation_levels = c(1:2); feature_classes = c("L","LQ"); number_pseudoabsences<-1000
 #set locations
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
@@ -79,9 +82,9 @@ source("scripts/utils/prep_predictor_data_f.R")
 predictor_data <- prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
-plot(predictor_data)
-predictor_data[[1]]
-predictor_data[[16]]
+# plot(predictor_data)
+# predictor_data[[1]]
+# predictor_data[[16]]
 
 
 for(raster_var in unique(names(predictor_data))){
@@ -176,4 +179,235 @@ plot(watercourses)
 
 watercourses<-crop(watercourses, extentvect)
 watercourses<-mask(watercourses, extentvect)
+watercourses<-project(watercourses, "EPSG:3005")
 plot(watercourses)
+presences <- sf::st_drop_geometry(d_alb[,c('x','y')])
+presences_thin<-sf::st_drop_geometry(d_thin[,c('x','y')])
+# Sample watercourses' locations for a collection of pseudoabsences; combine with data and then split into testing and training.
+pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(d_alb,geom = c("x", "y")), n = num_bg,
+                                             extf = 0.9)
+
+## Splits data by localities
+the_block <- get.block(presences,bg=pseudoabsences, orientation = "lat_lon")
+table(the_block$occs.grp)
+
+evalplot.grps(pts = presences, pts.grp = the_block$occs.grp, envs = raster(predictor_data$Annual_Mean_Temperature))+
+  geom_sf(data= st_transform(bc,3005), alpha = 0.1)+
+  ggplot2::ggtitle("Spatial block partitions: occurrences")
+
+evalplot.grps(pts = pseudoabsences, pts.grp = the_block$bg.grp, envs = raster(predictor_data$Annual_Mean_Temperature))+
+  geom_sf(data= st_transform(bc,3005), alpha = 0.1)+
+  ggplot2::ggtitle("Spatial block partitions: background")
+
+r_stack<-raster::stack(predictor_data)
+
+occs.z<- cbind(presences, raster::extract(r_stack, presences))
+bg.z <- cbind(pseudoabsences, raster::extract(r_stack, pseudoabsences))
+
+predictor_data = predictor_data %>% 
+  lapply(\(x) {
+    terra::project(x, "EPSG:3005")
+  }) %>% 
+  unlist()
+
+predictor_data<-terra::rast(predictor_data)
+
+library(tidyterra)
+ggplot()+
+  geom_spatraster(data= predictor_data[[1]])+
+  geom_point(data = presences, aes(x=x,y=y))
+
+
+me = ENMevaluate(occs = presences_thin, 
+                 envs = predictor_data, 
+                 bg = pseudoabsences, 
+                 algorithm = 'maxent.jar', 
+                 partitions = 'block', 
+                 tune.args = list(fc = feature_classes, 
+                                  rm = regularisation_levels))
+
+me
+
+
+# Find which model had the lowest AIC; we'll use this for now.
+opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+opt.aicc
+
+var_importance = me@variable.importance[[opt.aicc$tune.args]]
+var_importance
+
+predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
+plot(predictions)
+
+
+eval_model<- eval.models(me)[[opt.aicc$tune.args]]
+eval_model
+
+dismo::response(eval_model)
+#r1<-response(eval_model, var = "Annual_Mean_Temperature")
+
+#plot(r1)
+#axis(side = 1, at = eval_model@presence$Annual_Mean_Temperature, col = "blue", las = 2, pos = -0.02)
+
+# Replace parentheses in predictor data names with periods. 
+# This happens in the depths of MaxEnt to our variable names.
+predictor_data_names = stringr::str_replace_all(names(predictor_data),"(\\(|\\))","\\.")
+
+longList <- predictor_data_names %>% 
+  purrr::map( ~ {
+    # if(.x == "Nitrate(NO3)_plus_Nitrite(NO2)_Dissolved") browser()
+    xy_points = dismo::response(eval_model, var = .x) %>% 
+      as.data.frame() %>% 
+      dplyr::mutate(variable = .x) %>% 
+      dplyr::rename(X = V1, Y = p)
+  }) %>% 
+  dplyr::bind_rows() %>% 
+  tidyr::as_tibble()
+
+# Who are our presence points?
+
+presence_data<-eval_model@presence
+presence_data$index<-row.names(eval_model@presence)
+library(data.table)
+long_presence<-melt(setDT(presence_data), id.vars = "index")
+names(long_presence)<-c("index", "variable", "X")
+
+lim_vals<-long_presence %>% 
+  group_by(variable) %>% 
+  summarise(max = max(X),
+            min = min(X))
+
+
+
+presence_indices = row.names(eval_model@presence)
+longList$is_presence = FALSE
+longList[presence_indices,]$is_presence = TRUE
+
+source("scripts/utils/response_plot.r")
+
+plotlist<-list()
+for (i in longList$variable){
+  dt_to_plot<-longList[longList$variable == i,]
+  lng_pres<-long_presence[long_presence$variable == i,]
+  
+  plotlist[[i]]<-response_plot(dt_to_plot, lng_pres, i)
+}
+
+
+
+plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
+  
+  patchwork::wrap_plots(master_list_with_plots, 
+                        nrow = no_of_rows, ncol = no_of_cols)
+}
+
+plot_a_list(plotlist, round(length(plotlist))/4,round(length(plotlist))/4)
+
+dat_sim<-similarity(predictor_data, presences)
+dat_mess<-dat_sim$similarity_min
+
+# Check out results - this dataframe could be simplified to just hone in 
+# on the particular metrics we are curious about!
+maxent_results = me@results |> 
+  dplyr::filter(tune.args == opt.aicc$tune.args) |> 
+  tidyr::as_tibble() |> 
+  dplyr::mutate(dplyr::across(dplyr::everything(), \(x) as.character(x))) |> 
+  tidyr::pivot_longer(cols = dplyr::everything()) |> 
+  dplyr::add_row(name = "regularisation_levels_tested", value = paste0(regularisation_levels, collapse = ', ')) |> 
+  dplyr::add_row(name = "feature_classes_tested", value = paste0(feature_classes, collapse = ', '))
+maxent_results
+
+maxent_results.partitions = me@results.partitions |> 
+  dplyr::filter(tune.args == opt.aicc$tune.args) |> 
+  tidyr::as_tibble()
+maxent_results.partitions
+
+maxent_html = me@models[[opt.aicc$tune.args]]@html
+maxent_html
+
+single_model_metrics = me@models[[opt.aicc$tune.args]]@results[,1] |> 
+  as.matrix() |> 
+  as.data.frame()
+single_model_metrics
+
+single_model_metrics = single_model_metrics |> 
+  dplyr::mutate(metric = snakecase::to_snake_case(rownames(single_model_metrics))) |>
+  dplyr::rename(value = V1) |>
+  tidyr::as_tibble() |>
+  dplyr::select(metric, value)
+single_model_metrics
+
+key_metrics = single_model_metrics |>
+  dplyr::filter(metric %in% c("x_training_samples","training_auc","habitat_threshold_var") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
+key_metrics
+
+pres_sf = sf::st_as_sf(me@occs, coords = c("x","y"), crs = 3005)
+pres_sf$groups = me@occs.grp
+absences_sf = sf::st_as_sf(me@bg, coords = c("x","y"), crs = 3005)
+
+points_sf = dplyr::bind_rows(
+  pres_sf |> dplyr::mutate(type = 'presence'), 
+  absences_sf |> dplyr::mutate(type = 'pseudoabsence')
+)
+
+# Calculate some values to use as labels and captions in the figure.
+train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
+train_auc = maxent_results$auc.train
+
+metrics_caption = var_importance |> 
+  dplyr::select(variable, percent.contribution) |> 
+  dplyr::arrange(dplyr::desc(percent.contribution)) |> 
+  dplyr::slice(1:5) |> 
+  dplyr::mutate(title_metric = stringr::str_replace_all(variable,"_"," ")) |>
+  dplyr::rowwise() |>
+  dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(percent.contribution,2),"%")) |>
+  dplyr::ungroup() |>
+  dplyr::summarise(paste0(v, collapse = '<br>'))
+
+species_name<-sppOI
+predictions_plot = ggplot() + 
+  tidyterra::geom_spatraster(data = predictions) + 
+  geom_sf(data = points_sf, aes(col = type, alpha = type)) +
+  scale_colour_manual(values = c('presence' = "red",
+                                 'pseudoabsence' = "purple")) +
+  scale_alpha_manual(values = c('presence' = 1,
+                                'pseudoabsence' = 0.1),
+                     guide = 'none') +
+  scale_fill_viridis_c() +
+  labs(title = paste0(stringr::str_to_title(species_name)),
+       subtitle = paste0("Number of Training Data Points: ",train_samp,
+                         "<br>Training Area-Under-Curve: ",round(as.numeric(train_auc),4)),
+       caption = metrics_caption,
+       fill = "Predicted \nRelative \nSuitability",
+       color = "Sample Type") +
+  theme(
+    plot.subtitle = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown()
+  )
+predictions_plot
+
+#rayshader::plot_gg(predictions_plot)
+# 
+# habitat_or_not = me@predictions[[opt.aicc$tune.args]]
+# 
+# threshold_value = key_metrics |> 
+#   dplyr::filter(metric == habitat_threshold_var) |> 
+#   dplyr::pull(value)
+# 
+# habitat_or_not[habitat_or_not < threshold_value] = FALSE
+# habitat_or_not[habitat_or_not >= threshold_value] = TRUE
+# 
+# fit = terra::extract(
+#   predictions,
+#   points_sf |>
+#     terra::vect()
+# )
+# 
+# names(fit)[2] = 'maxent'
+# 
+# obs = terra::extract(
+#   predictions,
+#   points_sf |>
+#     dplyr::filter(type == "presence") |> 
+#     terra::vect()
+# )
