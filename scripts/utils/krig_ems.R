@@ -67,10 +67,13 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
     # Find and drop outlier rows
     results = results[!(results$RESULT > Quantile3 + (IQR*1.5) | results$RESULT < Quantile1 - (IQR*1.5)),]
   }
+  
   # Simplify our input data so that there is one point of data per 100km^2 raster cell.
   interp_grid = sf::st_make_grid(sf::st_as_sf(bc_vect_alb), cellsize = c(10000,10000)) |> 
     sf::st_as_sf() |> 
     sf::st_filter(sf::st_as_sf(bc_vect_alb))
+  
+  results_albers = sf::st_transform(results, 3005)
   
   results_albers_overlap = interp_grid |> 
     dplyr::mutate(row_id = row_number()) |> 
@@ -176,5 +179,5 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   terra::writeRaster(spatRast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_krig.tif"), overwrite = T)
   #terra::writeRaster(spatRastVar, paste0(new_path,"raster/",var_save,"_",year_to_search,"_var_krig.tif"), overwrite = T)
   terra::writeRaster(maskrast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_masked_krig.tif"), overwrite = T)
-  
+  return(maskrast)
 }
