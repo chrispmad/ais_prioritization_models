@@ -35,6 +35,7 @@ bc<-bc_bound()
 
 d_alb<-st_transform(d, 3005)
 d_thin<-thin_occ(d_alb)
+
 d_thin$thinned<-"Y"
 d_alb$thinned<-"N"
 d_comp<-rbind(d_thin, d_alb)
@@ -121,7 +122,7 @@ p<-ggplot(data = melt_d_alb, aes(factor(variable),y = value))+
 p + geom_boxplot() + facet_wrap(~variable, scale = "free")+
   ggtitle("Predictor values at all observations")
 
-terra::plot(log10(predictor_data$Oxygen_Dissolved))
+#terra::plot(log10(predictor_data$Oxygen_Dissolved))
 
 p1<-ggplot(data = melt_d_thin, aes(factor(variable),y = value))+
   theme(plot.title = element_text(size = rel(2), face = "bold"),
@@ -147,12 +148,12 @@ library(GGally)
 # colnames(Z)<-c("Present", "Temp", "Precip", "Calcium", "pH", "Elevation")
 # pairs(Z[,-1], lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
 
-col_start<-grep("^y$", colnames(d_alb))+1
-ggpairs(d_alb,columns = col_start:ncol(d_alb))+
-  ggtitle("All observations for predictor data correlation")
-
-ggpairs(d_thin,columns = col_start:ncol(d_alb))+
-  ggtitle("Thinned observations for predictor data correlation")
+# col_start<-grep("^y$", colnames(d_alb))+1
+# ggpairs(d_alb,columns = col_start:ncol(d_alb))+
+#   ggtitle("All observations for predictor data correlation")
+# 
+# ggpairs(d_thin,columns = col_start:ncol(d_alb))+
+#   ggtitle("Thinned observations for predictor data correlation")
 
 
 library(ENMTools)
@@ -162,11 +163,11 @@ thresh<-0.6
 dists<-as.dist(1-abs(cor))
 clust <- hclust(dists, method = "single")
 groups <- cutree(clust, h = 1 - thresh)
-jpeg("./images/cluterDendogram.jpg", width = 1200, height = 800)
+#jpeg("./images/cluterDendogram.jpg", width = 1200, height = 800)
 ## Visualize groups:
 plot(clust, hang = -1)
 rect.hclust(clust, h = 1 - thresh)
-dev.off()
+#dev.off()
 
 vif2<-usdm::vif(predictor_data)
 vif2
@@ -179,38 +180,59 @@ plot(watercourses)
 
 watercourses<-crop(watercourses, extentvect)
 watercourses<-mask(watercourses, extentvect)
-watercourses<-project(watercourses, "EPSG:3005")
+#watercourses<-project(watercourses, "EPSG:3005")
 plot(watercourses)
-presences <- sf::st_drop_geometry(d_alb[,c('x','y')])
-presences_thin<-sf::st_drop_geometry(d_thin[,c('x','y')])
+d <- d |> 
+  dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
+                y = sf::st_coordinates(geometry)[,2])
+
+presences <- d |> 
+  sf::st_drop_geometry(c('x','y')) |> 
+  select(c("x", "y"))
+presences_thin<- d_thin |>
+  st_as_sf() |> 
+  st_transform(4326) |> 
+  dplyr::mutate(x1 = sf::st_coordinates(geometry)[,1],
+                y1 = sf::st_coordinates(geometry)[,2]) |> 
+  select(c("x1", "y1")) |> 
+  st_drop_geometry()
+
+  names(presences_thin)<-c("x", "y")
+  
+  #sf::st_drop_geometry(d_thin[,c('x','y')])
+
+
 # Sample watercourses' locations for a collection of pseudoabsences; combine with data and then split into testing and training.
-pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(d_alb,geom = c("x", "y")), n = num_bg,
+background_points <- predicts::backgroundSample(watercourses, p = terra::vect(d), n = num_bg,
                                              extf = 0.9)
 
 ## Splits data by localities
-the_block <- get.block(presences,bg=pseudoabsences, orientation = "lat_lon")
+the_block <- get.block(presences,bg=background_points, orientation = "lat_lon")
 table(the_block$occs.grp)
 
 evalplot.grps(pts = presences, pts.grp = the_block$occs.grp, envs = raster(predictor_data$Annual_Mean_Temperature))+
   geom_sf(data= st_transform(bc,3005), alpha = 0.1)+
   ggplot2::ggtitle("Spatial block partitions: occurrences")
 
-evalplot.grps(pts = pseudoabsences, pts.grp = the_block$bg.grp, envs = raster(predictor_data$Annual_Mean_Temperature))+
+evalplot.grps(pts = background_points, pts.grp = the_block$bg.grp, envs = raster(predictor_data$Annual_Mean_Temperature))+
   geom_sf(data= st_transform(bc,3005), alpha = 0.1)+
   ggplot2::ggtitle("Spatial block partitions: background")
 
 r_stack<-raster::stack(predictor_data)
 
 occs.z<- cbind(presences, raster::extract(r_stack, presences))
-bg.z <- cbind(pseudoabsences, raster::extract(r_stack, pseudoabsences))
+bg.z <- cbind(background_points, raster::extract(r_stack, background_points))
 
-predictor_data = predictor_data %>% 
-  lapply(\(x) {
-    terra::project(x, "EPSG:3005")
-  }) %>% 
-  unlist()
+# predictor_data = predictor_data %>% 
+#   lapply(\(x) {
+#     terra::project(x, "EPSG:3005")
+#   }) %>% 
+#   unlist()
+# 
+# predictor_data<-terra::rast(predictor_data)
 
-predictor_data<-terra::rast(predictor_data)
+presences
+
 
 library(tidyterra)
 ggplot()+
@@ -218,9 +240,9 @@ ggplot()+
   geom_point(data = presences, aes(x=x,y=y))
 
 
-me = ENMevaluate(occs = presences_thin, 
+me = ENMevaluate(occs = presences, 
                  envs = predictor_data, 
-                 bg = pseudoabsences, 
+                 bg = background_points, 
                  algorithm = 'maxent.jar', 
                  partitions = 'block', 
                  tune.args = list(fc = feature_classes, 
@@ -301,7 +323,9 @@ plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
                         nrow = no_of_rows, ncol = no_of_cols)
 }
 
-plot_a_list(plotlist, round(length(plotlist))/4,round(length(plotlist))/4)
+plot_a_list(plotlist, 5,5)
+
+plot(predictor_data$asian_clam_temperature_limits)
 
 dat_sim<-similarity(predictor_data, presences)
 dat_mess<-dat_sim$similarity_min
@@ -386,28 +410,27 @@ predictions_plot = ggplot() +
   )
 predictions_plot
 
-#rayshader::plot_gg(predictions_plot)
-# 
-# habitat_or_not = me@predictions[[opt.aicc$tune.args]]
-# 
-# threshold_value = key_metrics |> 
-#   dplyr::filter(metric == habitat_threshold_var) |> 
-#   dplyr::pull(value)
-# 
-# habitat_or_not[habitat_or_not < threshold_value] = FALSE
-# habitat_or_not[habitat_or_not >= threshold_value] = TRUE
-# 
-# fit = terra::extract(
-#   predictions,
-#   points_sf |>
-#     terra::vect()
-# )
-# 
-# names(fit)[2] = 'maxent'
-# 
-# obs = terra::extract(
-#   predictions,
-#   points_sf |>
-#     dplyr::filter(type == "presence") |> 
-#     terra::vect()
-# )
+
+########################
+########################
+########################
+
+cor<-raster.cor.matrix(predictor_data)
+thresh<-0.6
+dists<-as.dist(1-abs(cor))
+clust <- hclust(dists, method = "single")
+groups <- cutree(clust, h = 1 - thresh)
+#jpeg("./images/cluterDendogram.jpg", width = 1200, height = 800)
+## Visualize groups:
+plot(clust, hang = -1)
+rect.hclust(clust, h = 1 - thresh)
+test<-predictor_data
+
+to_keep<-c("asian_clam_temperature_limit", "Phosphorus_Total_Dissolved", "Oxygen_Dissolved",
+           "TotalInspections", "days_fished", "population_density", "Water_Temperature",
+           "Carbon_Dissolved_Organic", "calc", "dist_to_highways", "Annual_Mean_Temperature",
+           "Nitrogen_Total")
+test<-subset(predictor_data, names(predictor_data) == to_keep)
+predictor_data
+groups
+
