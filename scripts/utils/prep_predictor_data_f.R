@@ -27,6 +27,8 @@ prep_predictor_data = function(proj_path,
   # Pull in DFO 2023 Angler Survey data - Sum of Days Fished
   days_fished = terra::rast(paste0(onedrive_path,"CNF/DFO_angling_survey_days_fished_raster.tif"))
   
+  
+  
   # Pull in stream order (of streams with stream order 3+), 2km resolution.
   # stream_ord = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif"))
   # names(stream_ord) = "stream_order"
@@ -63,6 +65,26 @@ prep_predictor_data = function(proj_path,
   
   # Bring in waterbody connectivity
   wb_conn = terra::rast(paste0(onedrive_path,"CNF/stream_order_three_plus_raster.tif"))
+  
+  interpolated_raster_limits_filepaths = list.files(path = paste0(onedrive_path,"raster/"),
+                                                    pattern = ".*limits",
+                                                    full.names = T)
+  interpolated_rasts_limits = interpolated_raster_limits_filepaths |> 
+    lapply(terra::rast)
+  
+  raster_names = list.files(path = paste0(onedrive_path,"raster/"),
+                            pattern = ".*limits") %>%
+                                    gsub(".tif", "", .)
+ 
+  names(interpolated_rasts_limits)<-raster_names
+  
+  interpolated_rasts_limits = purrr::map2(interpolated_rasts_limits, names(interpolated_rasts_limits), ~ {
+    names(.x) = .y
+    .x
+  })
+  
+  rm(raster_names)
+  
   
   # Bring in masked rasters from the 'raster/' data folder.
   interpolated_raster_filepaths = list.files(path = paste0(onedrive_path,"raster/"),
@@ -117,7 +139,7 @@ prep_predictor_data = function(proj_path,
                  boat_dests,days_fished)
 
   rasters = append(rasters, interpolated_rasts)
-
+  rasters<- append(rasters, interpolated_rasts_limits)
   
   # Cut our rasters down to just BC.
   rasters = rasters |>
