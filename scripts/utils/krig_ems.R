@@ -131,6 +131,8 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   pointscrs<-st_transform(results_albers_as_centroids_no_na,4326)
   # st_crs(grid10km)
   # st_crs(pointscrs)
+  
+  #pointscrs$medianVal<-log10(pointscrs$medianVal+0.001)
   varKRVar <- autofitVariogram(medianVal ~ 1, 
                                as(pointscrs, "Spatial"),
                                verbose=TRUE,
@@ -167,9 +169,16 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   
   endCluster()
   spatRast<-rast(krig_rast)
+  plot(spatRast)
+  #spatRast[[1]] <- 10^(spatRast[[1]] - 0.001)
+  plot(spatRast)
   
   testrast<-crop(spatRast, bc_vect)
   maskrast<-mask(testrast, bc_vect)
+  
+  plot(maskrast)
+  
+  
   
   
   var_save<-gsub(" ", "_", var_name)
