@@ -1,0 +1,170 @@
+---
+title: "AsianClamMaxEnt"
+author: "John Phelan and Chris Madsen"
+date: "2024-10-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(DBI)
+library(bcinvadeR)
+library(terra)
+library(sf)
+library(geodata)
+library(predicts)
+library(ggpubr)
+library(dismo)
+library(rJava)
+source("ZuurFuncs.R")
+library(ecospat)
+library(ENMeval)
+library(bcmaps)
+library(data.table)
+
+sppOI<-"asian clam"
+regularisation_levels = c(1:2); feature_classes = c("L","LQ","LQH","H"); number_pseudoabsences<-1000
+
+habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
+
+#set locations
+proj_wd = getwd()
+onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+onedrive_path = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+
+source("scripts/utils/prep_predictor_data_f.R")
+source("scripts/utils/run_maxent_f.R")
+source("scripts/utils/thin_occ.R")
+
+```
+
+## R Markdown
+
+
+```{r import_data}
+bc<-bc_bound()
+extentvect<- project(vect(bc),"EPSG:4326")
+#extentvect<-terra::vect("./vect/fras_colum.gpkg")
+extentvect<-project(extentvect, "EPSG:4326")
+bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
+
+
+# ggplot() +
+#   geom_sf(data = bc, fill = "lightblue") +
+#   theme_minimal() +
+#   labs(title = "British Columbia Geometry")
+
+
+predictor_data = prep_predictor_data(proj_path = proj_wd,
+                                     onedrive_path = paste0(onedrive_wd),
+                                     extentvect)
+
+predictor_data <- predictor_data[[c("pH", "calc", "dist_to_highways", "population_density", 
+                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity", 
+                                    "temp_Autumn", "temp_Spring", "temp_Summer", "temp_Winter")]]
+
+sppDF = bcinvadeR::grab_aq_occ_data(sppOI)
+
+ # Ensure unique coordinates by adding
+  sppDF_jitter = sppDF |>
+    dplyr::filter(duplicated(paste0(geometry))) |>
+    sf::st_jitter(factor = 0.0001)
+
+  not_jittered_sppDF = sppDF |>
+    dplyr::filter(!duplicated(paste0(geometry)))
+
+  sppDF_j = dplyr::bind_rows(sppDF_jitter,
+                                not_jittered_sppDF)
+  
+  dat = sppDF |> 
+  dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
+                y = sf::st_coordinates(geometry)[,2])
+species_name = dat$Species[1]
+
+watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
+
+predictor_data$TotalInspections<-subst(predictor_data$TotalInspections, NA, 0)
+predictor_data$days_fished<-subst(predictor_data$days_fished, NA, 0)
+
+watercourses<-crop(watercourses, extentvect)
+watercourses<-mask(watercourses, extentvect)
+
+
+```
+
+## Data Exploration
+
+
+
+```{r data_exploration}
+
+#thin_spp<-thin_occ(dat) # thins down the asian clam to one occurrence
+
+for(raster_var in unique(names(predictor_data))){
+  dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                        dat[,c("x","y")], ID = FALSE)[[raster_var]]
+}
+
+datDT<-setDT(dat)
+
+
+
+
+
+```
+
+### Plotting Rasters {.tabset}
+
+#### Annual Mean Temperature
+
+```{r}
+
+melt_dat<-melt(datDT, id.vars = c(1:9), measure.vars = c(10:ncol(dat)))
+
+ggplot(melt_dat, aes(x = 1, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free_y") +
+  labs(title = "Boxplot of Values by Variable") +
+  xlab("Variable") +
+  ylab("Value")
+
+```
+
+
+
+
+## Colinearity
+
+The dendogram is a visual representation of how correlated the predictor variables are. A user defined threshold is set, in this case to be 0.6 (medium). A smaller threshold will increase the correlation between the predictors.
+```{r dendogram}
+library(ENMTools)
+
+cor<-raster.cor.matrix(predictor_data)
+thresh<-0.6
+dists<-as.dist(1-abs(cor))
+clust <- hclust(dists, method = "single")
+groups <- cutree(clust, h = 1 - thresh)
+#jpeg("./images/cluterDendogram.jpg", width = 1200, height = 800)
+## Visualize groups:
+plot(clust, hang = -1)
+rect.hclust(clust, h = 1 - thresh)
+#dev.off()
+
+
+```
+
+
+The dendogram shows that total inspections and days fished are both correlated, as well as pH and calcium. We could consider removing these now, or running the model with all these predictors included. For the moment, I do not think that they should be removed as they may provide valuable information about suitable habitat. They should be removed after running the model with all predictors to assess their effect.
+
+The variance inflation factor is another measures of the collinearity between variables.
+```{r vif2}
+vif2<-usdm::vif(predictor_data)
+vif2
+```
+The higher the value of VIF, the more the predictor is colinear with another predictor. We cannot tell which predictors are colinear from these values, so the previous plot is more useful for this process. The values are sometimes requested or preferred so they have been included for completeness. 
+
+
+
