@@ -66,15 +66,17 @@ prep_predictor_data = function(proj_path,
   # Bring in waterbody connectivity
   wb_conn = terra::rast(paste0(onedrive_path,"CNF/stream_order_three_plus_raster.tif"))
   
-  interpolated_raster_limits_filepaths = list.files(path = paste0(onedrive_path,"raster/"),
-                                                    pattern = ".*limits",
+  
+  
+  interpolated_raster_limits_filepaths = list.files(path = paste0(onedrive_path,"raster/limits/"),
+                                                    pattern = ".*limits.tif$",
                                                     full.names = T)
   interpolated_rasts_limits = interpolated_raster_limits_filepaths |> 
     lapply(terra::rast)
   
-  raster_names = list.files(path = paste0(onedrive_path,"raster/"),
-                            pattern = ".*limits") %>%
-                                    gsub(".tif", "", .)
+  raster_names = list.files(path = paste0(onedrive_path,"raster/limits/"),
+                            pattern = ".*limits.tif$") %>%
+                                    gsub(".tif", "", .) 
  
   names(interpolated_rasts_limits)<-raster_names
   
@@ -84,6 +86,7 @@ prep_predictor_data = function(proj_path,
   })
   
   rm(raster_names)
+  
   
   
   # Bring in masked rasters from the 'raster/' data folder.
@@ -112,6 +115,25 @@ prep_predictor_data = function(proj_path,
     names(.x) = .y
     .x
   })
+  
+  seasonTemperatures_fp = list.files(path = paste0(onedrive_path,"raster/"),
+                                             pattern = ".*raster_temp",
+                                             full.names = T)
+  
+  seasonTemps = seasonTemperatures_fp |> 
+    lapply(terra::rast)
+  
+  raster_names = list.files(path = paste0(onedrive_path,"raster/"),
+                            pattern = ".*raster_temp") |> 
+    stringr::str_remove_all("raster_") |> 
+    stringr::str_remove_all(".tif")
+  
+  names(seasonTemps) = raster_names
+  
+  seasonTemps = purrr::map2(seasonTemps, names(seasonTemps), ~ {
+    names(.x) = .y
+    .x
+  })
   # # Combine rasters that code for very similar things... e.g. dissolved or not explicitly dissolved...
   # unique_rasters = data.frame(group_name = unlist(unique(stringr::str_extract(raster_names,"((_)?[a-zA-Z])*"))))
   # 
@@ -137,9 +159,11 @@ prep_predictor_data = function(proj_path,
                  cmidata$Annual_Precipitation,
                  ph_NAM,Calc_NAM,roads,elev,pop_dens,
                  boat_dests,days_fished)
-
+  names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
+                    "popn_density", "boats_destination", "days_fished")
   rasters = append(rasters, interpolated_rasts)
   rasters<- append(rasters, interpolated_rasts_limits)
+  rasters<- append(rasters, seasonTemps)
   
   # Cut our rasters down to just BC.
   rasters = rasters |>
@@ -150,7 +174,7 @@ prep_predictor_data = function(proj_path,
   # Resample to ensure same resolution as bioclim variables.
   rasters = rasters |> 
     lapply(\(x) {
-      terra::resample(x, rasters[[1]])
+      terra::resample(x, rasters[[8]])
     })
   
   rasters_c = Reduce(x = rasters, f = 'c')
