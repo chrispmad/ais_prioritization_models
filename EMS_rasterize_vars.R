@@ -11,7 +11,7 @@ library(stringr)
 library(terra)
 library(raster)
 
-variable_to_search <- "Temperature"
+variable_to_search <- "Chlorophyll"
 #year_to_search<-2023
 year_to_search<-"All"
 
@@ -27,7 +27,7 @@ conn<-dbConnect(RSQLite::SQLite(),"../EMS/output/EMS.sqlite")
 
 test1<-dbGetQuery(conn, paste0("select * from results where parameter like '%",variable_to_search,"%'"))
 
-dbDisconnect()
+dbDisconnect(conn)
 # pH <-dbGetQuery(conn, "select * from results where parameter like 'pH' and strftime('&Y', COLLECTION_DATE) >= 2022")
 
 ##date column - collection start and collection end - if need date specific - convert back to datetime
@@ -88,27 +88,27 @@ ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col
 
 results_albers_as_centroids_no_na = results_albers_as_centroids |> dplyr::filter(!is.na(medianVal))
 
-# locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
-#   geom_point()+
-#   scale_color_manual(values = c25[1:length(unique(results$LOCATION_PURPOSE))])+
-#   labs(color = "Purpose of \nlocation sample", x = "Date", y = "Temperature")+
-#   theme(plot.title = element_text(size = rel(2), face = "bold"),
-#         plot.subtitle = element_text(size = rel(1.8)),
-#         legend.title = element_text(size = rel(1.8)),
-#         legend.text = element_text(size = rel(1.2)),
-#         legend.position = 'right',
-#         panel.grid.major = element_blank(),
-#         strip.text.x = element_text(size = rel(1.2),face = "bold"),
-#         axis.text = element_text(size = rel(1.1)),
-#         axis.title = element_text(size = rel(1.3), face = "bold")
-#         )+
-#   facet_wrap( ~ LOCATION_TYPE, ncol = 3)
+locplot<-ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_PURPOSE)))+
+  geom_point()+
+  scale_color_manual(values = viridis::viridis(5))+
+  labs(color = "Purpose of \nlocation sample", x = "Date", y = "Temperature")+
+  theme(plot.title = element_text(size = rel(2), face = "bold"),
+        plot.subtitle = element_text(size = rel(1.8)),
+        legend.title = element_text(size = rel(1.8)),
+        legend.text = element_text(size = rel(1.2)),
+        legend.position = 'right',
+        panel.grid.major = element_blank(),
+        strip.text.x = element_text(size = rel(1.2),face = "bold"),
+        axis.text = element_text(size = rel(1.1)),
+        axis.title = element_text(size = rel(1.3), face = "bold")
+        )+
+  facet_wrap( ~ LOCATION_TYPE, ncol = 3)
 #ggsave("./images/locationSamples.png",locplot, height = 10, width = 12, units = "in")
 
-# ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_TYPE)))+
-#   geom_point()+
-#   scale_color_manual(values = c25[1:length(unique(results$LOCATION_TYPE))])+
-#   facet_wrap( ~ LOCATION_PURPOSE, ncol = 3)
+ggplot(data = results, aes(x = COLLECTION_DATE, y = RESULT, color = as.factor(LOCATION_TYPE)))+
+  geom_point()+
+  scale_color_manual(values = viridis::viridis(6))+
+  facet_wrap( ~ LOCATION_PURPOSE, ncol = 3)
 
 river2024<- results_albers_as_centroids_no_na #%>% 
   #filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK")
@@ -125,9 +125,9 @@ library(lubridate)
 #   filter(medianVal <=40 | medianVal <=-10)
 
 
-P0<-ggplot(data = filterdata)+
-  geom_point(aes(x=COLLECTION_DATE, y = medianVal))
-P0
+# P0<-ggplot(data = filterdata)+
+#   geom_point(aes(x=COLLECTION_DATE, y = medianVal))
+# P0
 
 
 # p1<-ggplot()+
@@ -178,10 +178,13 @@ grid10km <- expand.grid(
 st_crs(results_albers_as_centroids_no_na)
 st_crs(grid10km)
 
+results_albers_as_centroids_no_na$logMedian<-log10(results_albers_as_centroids_no_na$medianVal + 0.001)
+
+
 #what are the settings here? What could be done to better fit the data?
 ## nugget is y intercept; range is the point wher the variogram levels off; sill is the total
 ## level where the empirical variogram appears to level off. 
-varKRVar <- autofitVariogram(medianVal ~ 1, 
+varKRVar <- autofitVariogram(logMedian ~ 1, 
                             as(results_albers_as_centroids_no_na, "Spatial"),
                             verbose=TRUE,
                             fix.values = c(0,NA,NA))
@@ -191,7 +194,7 @@ plot(varKRVar)
 
 
 #interpolation model
-KRvarmod <- gstat(formula=medianVal~1,
+KRvarmod <- gstat(formula=logMedian~1,
                  locations=as(results_albers_as_centroids_no_na,"Spatial"),
                  model=varKRVar$var_model
                  )
@@ -201,6 +204,10 @@ KRvarmod
 KRgrid10km <- as(grid10km, "SpatialGrid")
 KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
 
+plot(KRVar_interpolation)
+
+KRVar_interpolation$var1.pred<-10^(KRVar_interpolation$var1.pred-0.001)
+KRVar_interpolation$var1.var<-10^(KRVar_interpolation$var1.var-0.001)
 plot(KRVar_interpolation)
 
 interp_r = terra::rast(KRVar_interpolation)
@@ -235,10 +242,12 @@ plot(spatRast)
 
 croppedSpat<- crop(spatRast, bc_vect_alb)
 maskedspat<-mask(croppedSpat, bc_vect_alb)
-plot(maskedspat)
+plot((maskedspat), main = variable_to_search)
+plot(log10(maskedspat), main = paste("Log10 of:",variable_to_search))
 
 
 #writeRaster(KrigRast, paste0("./output/Raster/Krig",variable_to_search,year_to_search,".tif"), overwrite = T)
 new_path <- gsub("CNF/", "", onedrive_path)
-terra::writeRaster(spatRast, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_krig.tif"))
-terra::writeRaster(spatRastVar, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_var_krig.tif"))
+terra::writeRaster(spatRast, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_krig.tif"), overwrite = T)
+terra::writeRaster(spatRastVar, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_var_krig.tif"), overwrite = T)
+terra::writeRaster(maskedspat, paste0(new_path,"raster/",variable_to_search,"_",year_to_search,"_masked_krig.tif"), overwrite = T)
