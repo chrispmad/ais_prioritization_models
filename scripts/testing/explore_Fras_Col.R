@@ -100,31 +100,10 @@ for(raster_var in unique(names(predictor_data))){
 
 d_alb_DT<-setDT(d_alb)
 d_thin_DT<-setDT(d_thin)
-melt_d_alb<-melt(d_alb_DT, id.vars = 1:11, measure.vars = 11:ncol(d_alb_DT))
-melt_d_thin<-melt(d_thin_DT, id.vars = 1:11, measure.vars = 11:ncol(d_thin_DT))
+melt_d_alb<-melt(d_alb_DT, id.vars = c(1:11,ncol(d_alb_DT)), measure.vars = 12:ncol(d_alb_DT)-1)
+melt_d_thin<-melt(d_thin_DT, id.vars = c(1:11,ncol(d_thin_DT)), measure.vars = 12:ncol(d_thin_DT)-1)
 
-p<-ggplot(data = melt_d_alb, aes(factor(variable),y = value))+
-  theme(plot.title = element_text(size = rel(2), face = "bold"),
-                plot.subtitle = element_text(size = rel(1.8)),
-                legend.title = element_text(size = rel(1.8)),
-                legend.text = element_text(size = rel(1.2)),
-                legend.position = 'bottom',
-                panel.background = element_rect(fill = "white"),
-                panel.grid.major = element_line(linewidth = 0.5, linetype = "solid",
-                                                color = "grey"),
-                axis.text = element_text(size = rel(1.1), face = "bold"),
-                axis.title = element_text(face = "bold"),
-                axis.title.x=element_blank(),
-                axis.text.x=element_blank(),
-                axis.ticks.x=element_blank(),
-                )
-
-p + geom_boxplot() + facet_wrap(~variable, scale = "free")+
-  ggtitle("Predictor values at all observations")
-
-#terra::plot(log10(predictor_data$Oxygen_Dissolved))
-
-p1<-ggplot(data = melt_d_thin, aes(factor(variable),y = value))+
+p <- ggplot(data = melt_d_alb, aes(x = factor(asian_clam_temperature_limits), y = value)) +
   theme(plot.title = element_text(size = rel(2), face = "bold"),
         plot.subtitle = element_text(size = rel(1.8)),
         legend.title = element_text(size = rel(1.8)),
@@ -135,12 +114,32 @@ p1<-ggplot(data = melt_d_thin, aes(factor(variable),y = value))+
                                         color = "grey"),
         axis.text = element_text(size = rel(1.1), face = "bold"),
         axis.title = element_text(face = "bold"),
-        axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-  )
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.ticks.x = element_blank())
 
-p1 + geom_boxplot() + facet_wrap(~variable, scale = "free")+
+p + geom_boxplot() +
+  facet_wrap(~variable, scale = "free") +
+  ggtitle("Predictor values at all observations")
+#terra::plot(log10(predictor_data$Oxygen_Dissolved))
+
+p <- ggplot(data = melt_d_thin, aes(x = factor(asian_clam_temperature_limits), y = value)) +
+  theme(plot.title = element_text(size = rel(2), face = "bold"),
+        plot.subtitle = element_text(size = rel(1.8)),
+        legend.title = element_text(size = rel(1.8)),
+        legend.text = element_text(size = rel(1.2)),
+        legend.position = 'bottom',
+        panel.background = element_rect(fill = "white"),
+        panel.grid.major = element_line(linewidth = 0.5, linetype = "solid",
+                                        color = "grey"),
+        axis.text = element_text(size = rel(1.1), face = "bold"),
+        axis.title = element_text(face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.ticks.x = element_blank())
+
+p + geom_boxplot() +
+  facet_wrap(~variable, scale = "free") +
   ggtitle("Predictor values at thinned observations")
 
 library(GGally)
@@ -186,16 +185,17 @@ d <- d |>
   dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
                 y = sf::st_coordinates(geometry)[,2])
 
-presences <- d |> 
-  sf::st_drop_geometry(c('x','y')) |> 
-  select(c("x", "y"))
+presences <- d %>%
+  sf::st_drop_geometry(c('x','y')) %>%
+  dplyr::select(c("x", "y"))
+
 presences_thin<- d_thin |>
   st_as_sf() |> 
   st_transform(4326) |> 
   dplyr::mutate(x1 = sf::st_coordinates(geometry)[,1],
                 y1 = sf::st_coordinates(geometry)[,2]) |> 
-  select(c("x1", "y1")) |> 
-  st_drop_geometry()
+  dplyr::select(c("x1", "y1")) |> 
+  sf::st_drop_geometry()
 
   names(presences_thin)<-c("x", "y")
   
@@ -325,7 +325,9 @@ plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
 
 plot_a_list(plotlist, 5,5)
 
-plot(predictor_data$asian_clam_temperature_limits)
+values(predictor_data$asian_clam_temperature_limits)
+
+
 
 dat_sim<-similarity(predictor_data, presences)
 dat_mess<-dat_sim$similarity_min
@@ -424,13 +426,201 @@ groups <- cutree(clust, h = 1 - thresh)
 ## Visualize groups:
 plot(clust, hang = -1)
 rect.hclust(clust, h = 1 - thresh)
-test<-predictor_data
 
-to_keep<-c("asian_clam_temperature_limit", "Phosphorus_Total_Dissolved", "Oxygen_Dissolved",
-           "TotalInspections", "days_fished", "population_density", "Water_Temperature",
-           "Carbon_Dissolved_Organic", "calc", "dist_to_highways", "Annual_Mean_Temperature",
-           "Nitrogen_Total")
-test<-subset(predictor_data, names(predictor_data) == to_keep)
-predictor_data
-groups
+
+# to_keep<-c("asian_clam_temperature_limits","Phosphorus_Total_Dissolved", "Oxygen_Dissolved",
+#            "TotalInspections", "days_fished", "population_density", "Water_Temperature",
+#            "Carbon_Dissolved_Organic", "calc", "dist_to_highways", "Annual_Mean_Temperature",
+#            "Nitrogen_Total")
+to_keep<-c("asian_clam_temperature_limits","TotalInspections", "days_fished","population_density", "Water_Temperature")
+
+
+predictor_data_subset <- predictor_data[[to_keep]]
+predictor_data_subset
+
+cor<-raster.cor.matrix(predictor_data_subset)
+thresh<-0.6
+dists<-as.dist(1-abs(cor))
+clust <- hclust(dists, method = "single")
+groups <- cutree(clust, h = 1 - thresh)
+#jpeg("./images/cluterDendogram.jpg", width = 1200, height = 800)
+## Visualize groups:
+plot(clust, hang = -1)
+rect.hclust(clust, h = 1 - thresh)
+
+
+
+me = ENMevaluate(occs = presences, 
+                 envs = predictor_data_subset, 
+                 bg = background_points, 
+                 algorithm = 'maxent.jar', 
+                 partitions = 'block', 
+                 tune.args = list(fc = feature_classes, 
+                                  rm = regularisation_levels))
+
+me
+
+
+# Find which model had the lowest AIC; we'll use this for now.
+opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+opt.aicc
+
+var_importance = me@variable.importance[[opt.aicc$tune.args]]
+var_importance
+
+predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
+plot(predictions)
+
+
+eval_model<- eval.models(me)[[opt.aicc$tune.args]]
+eval_model
+
+dismo::response(eval_model)
+#r1<-response(eval_model, var = "Annual_Mean_Temperature")
+
+#plot(r1)
+#axis(side = 1, at = eval_model@presence$Annual_Mean_Temperature, col = "blue", las = 2, pos = -0.02)
+
+# Replace parentheses in predictor data names with periods. 
+# This happens in the depths of MaxEnt to our variable names.
+predictor_data_names = stringr::str_replace_all(names(predictor_data_subset),"(\\(|\\))","\\.")
+
+longList <- predictor_data_names %>% 
+  purrr::map( ~ {
+    # if(.x == "Nitrate(NO3)_plus_Nitrite(NO2)_Dissolved") browser()
+    xy_points = dismo::response(eval_model, var = .x) %>% 
+      as.data.frame() %>% 
+      dplyr::mutate(variable = .x) %>% 
+      dplyr::rename(X = V1, Y = p)
+  }) %>% 
+  dplyr::bind_rows() %>% 
+  tidyr::as_tibble()
+
+# Who are our presence points?
+
+presence_data<-eval_model@presence
+presence_data$index<-row.names(eval_model@presence)
+library(data.table)
+long_presence<-melt(setDT(presence_data), id.vars = "index")
+names(long_presence)<-c("index", "variable", "X")
+
+lim_vals<-long_presence %>% 
+  group_by(variable) %>% 
+  summarise(max = max(X),
+            min = min(X))
+
+
+
+presence_indices = row.names(eval_model@presence)
+longList$is_presence = FALSE
+longList[presence_indices,]$is_presence = TRUE
+
+source("scripts/utils/response_plot.r")
+
+plotlist<-list()
+for (i in longList$variable){
+  dt_to_plot<-longList[longList$variable == i,]
+  lng_pres<-long_presence[long_presence$variable == i,]
+  
+  plotlist[[i]]<-response_plot(dt_to_plot, lng_pres, i)
+}
+
+
+
+plot_a_list <- function(master_list_with_plots, no_of_rows, no_of_cols) {
+  
+  patchwork::wrap_plots(master_list_with_plots, 
+                        nrow = no_of_rows, ncol = no_of_cols)
+}
+
+plot_a_list(plotlist, 5,5)
+
+values(predictor_data_subset$asian_clam_temperature_limits)
+
+
+
+dat_sim<-similarity(predictor_data_subset, presences)
+dat_mess<-dat_sim$similarity_min
+
+# Check out results - this dataframe could be simplified to just hone in 
+# on the particular metrics we are curious about!
+maxent_results = me@results |> 
+  dplyr::filter(tune.args == opt.aicc$tune.args) |> 
+  tidyr::as_tibble() |> 
+  dplyr::mutate(dplyr::across(dplyr::everything(), \(x) as.character(x))) |> 
+  tidyr::pivot_longer(cols = dplyr::everything()) |> 
+  dplyr::add_row(name = "regularisation_levels_tested", value = paste0(regularisation_levels, collapse = ', ')) |> 
+  dplyr::add_row(name = "feature_classes_tested", value = paste0(feature_classes, collapse = ', '))
+maxent_results
+
+maxent_results.partitions = me@results.partitions |> 
+  dplyr::filter(tune.args == opt.aicc$tune.args) |> 
+  tidyr::as_tibble()
+maxent_results.partitions
+
+maxent_html = me@models[[opt.aicc$tune.args]]@html
+maxent_html
+
+single_model_metrics = me@models[[opt.aicc$tune.args]]@results[,1] |> 
+  as.matrix() |> 
+  as.data.frame()
+single_model_metrics
+
+single_model_metrics = single_model_metrics |> 
+  dplyr::mutate(metric = snakecase::to_snake_case(rownames(single_model_metrics))) |>
+  dplyr::rename(value = V1) |>
+  tidyr::as_tibble() |>
+  dplyr::select(metric, value)
+single_model_metrics
+
+key_metrics = single_model_metrics |>
+  dplyr::filter(metric %in% c("x_training_samples","training_auc","habitat_threshold_var") | str_detect(metric,".*_contribution") | str_detect(metric,".*permutation_imp.*"))
+key_metrics
+
+pres_sf = sf::st_as_sf(me@occs, coords = c("x","y"), crs = 3005)
+pres_sf$groups = me@occs.grp
+absences_sf = sf::st_as_sf(me@bg, coords = c("x","y"), crs = 3005)
+
+points_sf = dplyr::bind_rows(
+  pres_sf |> dplyr::mutate(type = 'presence'), 
+  absences_sf |> dplyr::mutate(type = 'pseudoabsence')
+)
+
+# Calculate some values to use as labels and captions in the figure.
+train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
+train_auc = maxent_results$auc.train
+
+metrics_caption = var_importance |> 
+  dplyr::select(variable, percent.contribution) |> 
+  dplyr::arrange(dplyr::desc(percent.contribution)) |> 
+  dplyr::slice(1:5) |> 
+  dplyr::mutate(title_metric = stringr::str_replace_all(variable,"_"," ")) |>
+  dplyr::rowwise() |>
+  dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(percent.contribution,2),"%")) |>
+  dplyr::ungroup() |>
+  dplyr::summarise(paste0(v, collapse = '<br>'))
+
+species_name<-sppOI
+predictions_plot = ggplot() + 
+  tidyterra::geom_spatraster(data = predictions) + 
+  geom_sf(data = points_sf, aes(col = type, alpha = type)) +
+  scale_colour_manual(values = c('presence' = "red",
+                                 'pseudoabsence' = "purple")) +
+  scale_alpha_manual(values = c('presence' = 1,
+                                'pseudoabsence' = 0.1),
+                     guide = 'none') +
+  scale_fill_viridis_c() +
+  labs(title = paste0(stringr::str_to_title(species_name)),
+       subtitle = paste0("Number of Training Data Points: ",train_samp,
+                         "<br>Training Area-Under-Curve: ",round(as.numeric(train_auc),4)),
+       caption = metrics_caption,
+       fill = "Predicted \nRelative \nSuitability",
+       color = "Sample Type") +
+  theme(
+    plot.subtitle = ggtext::element_markdown(),
+    plot.caption = ggtext::element_markdown()
+  )
+predictions_plot
+
+
 
