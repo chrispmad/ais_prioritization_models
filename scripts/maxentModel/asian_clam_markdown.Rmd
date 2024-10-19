@@ -26,9 +26,12 @@ library(bcmaps)
 library(data.table)
 
 sppOI<-"asian clam"
-regularisation_levels = c(1:2); feature_classes = c("L","LQ","LQH","H"); number_pseudoabsences<-1000
+regularisation_levels = c(1:5); feature_classes = c("L","LQ","LQH"); number_pseudoabsences<-1000
+# The number of background points to be gnerated
+number_pseudoabsences<-10000
 
 habitat_threshold_var = "equal_training_sensitivity_and_specificity_cloglog_threshold"
+
 
 #set locations
 proj_wd = getwd()
@@ -50,7 +53,7 @@ extentvect<- project(vect(bc),"EPSG:4326")
 #extentvect<-terra::vect("./vect/fras_colum.gpkg")
 extentvect<-project(extentvect, "EPSG:4326")
 bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
-
+bc_wgs<-sf::st_transform(bcmaps::bc_bound(),4326)
 
 # ggplot() +
 #   geom_sf(data = bc, fill = "lightblue") +
@@ -62,9 +65,9 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
 
-predictor_data <- predictor_data[[c("pH", "calc", "dist_to_highways", "population_density", 
+predictor_data <- predictor_data[[c("pH", "calc","population_density", "elev",
                                     "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity", 
-                                    "temp_Autumn", "temp_Spring", "temp_Summer", "temp_Winter")]]
+                                    "temp_Summer", "temp_Winter", "Water_Temperature")]]
 
 sppDF = bcinvadeR::grab_aq_occ_data(sppOI)
 
@@ -108,19 +111,49 @@ for(raster_var in unique(names(predictor_data))){
                                         dat[,c("x","y")], ID = FALSE)[[raster_var]]
 }
 
+r_stack<-raster::stack(predictor_data)
+
 datDT<-setDT(dat)
 
-
+samp<- dat %>% 
+    plyr::mutate(x = st_coordinates(geometry)[,1],
+                     y = st_coordinates(geometry)[,2]) %>% 
+    sf::st_drop_geometry() |> 
+    dplyr::select(x,y) |> 
+    mutate(present = 1)
 
 
 
 ```
 
-### Plotting Rasters {.tabset}
+### Plotting occurrences and predictors {.tabset}
+
+#### Location of spp
+
+```{r map_location}
+
+ggplot()+
+  geom_sf(data = bc_wgs, color = "lightgrey", alpha = 0.7)+
+  geom_point(data = samp, aes (x = x, y = y, color = as.factor(present)), size = 1.3)+
+  scale_color_manual(values = c("0" = "purple", "1" = "darkgreen"),
+                     labels = c("0" = "Absent", "1" = "Present"))+
+  labs(color = paste0(sppOI))+
+  ggtitle(paste0("Number of occurrences: ", nrow(samp)))+
+  ggthemes::theme_map()+
+  theme(plot.title = element_text(size = rel(2), face = "bold"),
+        plot.subtitle = element_text(size = rel(1.8)),
+        legend.title = element_text(size = rel(1.8)),
+        legend.text = element_text(size = rel(1.2)),
+        legend.position = 'bottom',
+        panel.background = element_blank()
+  ) 
+
+```
+
 
 #### Annual Mean Temperature
 
-```{r}
+```{r boxplot}
 
 melt_dat<-melt(datDT, id.vars = c(1:9), measure.vars = c(10:ncol(dat)))
 
@@ -166,5 +199,184 @@ vif2
 ```
 The higher the value of VIF, the more the predictor is colinear with another predictor. We cannot tell which predictors are colinear from these values, so the previous plot is more useful for this process. The values are sometimes requested or preferred so they have been included for completeness. 
 
+
+
+## MaxEnt Model
+
+Blocks are applied to separate the data. These are for validation and training the model fit. There are several options. The block selected accounts for spatial autocorrelation in the validation and training bins. The block splits occurrences (and background points) by latitude and longitude.
+
+```{r setBlocks}
+
+presences <- dplyr::distinct(samp)
+pres_xy<-presences[,c("x", "y")]
+pres<-st_as_sf(dat)
+# Sample watercourses' locations for a collection of pseudoabsences; combine with data and then split into testing and training.
+pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(pres), n = number_pseudoabsences, extf = 0.9) |> 
+  as.data.frame()
+
+the_block <- get.block(presences,bg=pseudoabsences, orientation = "lat_lon")
+#table(the_block$occs.grp)
+
+occs.z<- cbind(pres, raster::extract(r_stack, pres))
+bg.z <- cbind(pseudoabsences, raster::extract(r_stack, pseudoabsences))
+
+bg.z<-st_as_sf(bg.z, coords = c("x", "y"))
+
+```
+
+### Block partition plots
+
+```{r plot_blocks}
+evalplot.grps(pts = presences, pts.grp = the_block$occs.grp, envs = raster(predictor_data$pH))+
+ggplot2::ggtitle("Spatial block partitions: occurrences")
+
+evalplot.grps(pts = pseudoabsences, pts.grp = the_block$bg.grp, envs = raster(predictor_data$pH))+
+  ggplot2::ggtitle("Spatial block partitions: background")
+
+
+
+```
+
+```{r similarity_plots}
+
+crs(occs.z)
+bg.z <- bg.z |> st_set_crs(st_crs(occs.z))
+occs.z <- occs.z[c("pH"             ,          "calc"            ,         "population_density"    ,  
+ "elev"      ,               "TotalInspections"        , "days_fished"      ,      
+ "Carbon_Dissolved_Organic", "Chlorophyll"      ,       "Conductivity"      ,      
+ "Oxygen_Dissolved"   ,      "Turbidity"       ,         "temp_Summer"    ,         
+ "temp_Winter"   ,           "Water_Temperature")]
+
+bg.z <- bg.z[c("pH"             ,          "calc"            ,         "population_density"    ,  
+ "elev"      ,               "TotalInspections"        , "days_fished"      ,      
+ "Carbon_Dissolved_Organic", "Chlorophyll"      ,       "Conductivity"      ,      
+ "Oxygen_Dissolved"   ,      "Turbidity"       ,         "temp_Summer"    ,         
+ "temp_Winter"   ,           "Water_Temperature")]
+
+occs.z <- occs.z |> st_drop_geometry()
+bg.z <- bg.z |> st_drop_geometry()
+
+
+evalplot.envSim.hist(sim.type = "mess", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+
+evalplot.envSim.hist(sim.type = "most_diff", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+
+evalplot.envSim.hist(sim.type = "most_sim", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+
+
+# evalplot.envSim.map(sim.type = "mess", ref.data = "pres", envs = r_stack, occs.z = occs.z,
+#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
+#                     categoricals = NULL, bb.buf = 7)
+# 
+# evalplot.envSim.map(sim.type = "most_diff", ref.data = "pres", envs = r_stack, occs.z = occs.z,
+#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
+#                     categoricals = NULL, bb.buf = 7)
+
+```
+
+```{r run_model}
+
+me = ENMevaluate(occs = pres_xy, 
+                 envs = predictor_data, 
+                 bg = pseudoabsences, 
+                 algorithm = 'maxent.jar', 
+                 partitions = 'block', 
+                 tune.args = list(fc = feature_classes, 
+                                  rm = regularisation_levels))
+me
+
+
+```
+
+Running the model, there are combinations of the feature types: linear, quadraitic and hinge applied to the data. The regularisation parameter, ranging from 1 to 5 applies penalties to the model. Low values produce models with more features and predictors. There will be a trade-off between under- and over-fitting.
+
+### Morans I / Schoeners D
+
+This calculates the Schoeners D (or Morans I) for the fitted models. Values of Schoener's D that are closer to one indicate better overlap, with values tending to 0 are no overlap. This means that higher values in the table indicate more similar models.
+```{r get_results}
+overlap <- calc.niche.overlap(me@predictions, overlapStat = "D")
+overlap |>  View()
+
+```
+
+
+
+```{r results_summary_stats}
+# this gives the performance statistics for the whole set of models
+me@results
+
+# and for the partitions. This is done by block - 4 of them
+me@results.partitions
+
+eval.algorithm(me)
+eval.tune.settings(me)
+eval.partition.method(me)
+eval.results(me) |>  View()
+
+eval.results.partitions(me) |>  View()
+
+eval.predictions(me)
+
+```
+
+```{r deeper_model}
+m1.mx <- eval.models(me)[["fc.LQH_rm.1"]]
+m1.mx$betas
+
+evalplot.stats(me, stats = "or.mtp", color = "fc", x.var = "rm")
+```
+
+```{r select_model}
+
+# Find which model had the lowest AIC; we'll use this for now.
+opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+
+opt.aicc
+
+opt.seq <- opt.aicc %>% 
+  filter(or.10p.avg == min(or.10p.avg)) %>% 
+  filter(auc.val.avg == max(auc.val.avg))
+opt.seq
+
+
+mod.seq <- eval.models(me)[[opt.seq$tune.args]]
+mod.seq$betas
+plot(mod.seq, type="cloglog")
+
+pred.seq <- eval.predictions(me)[[opt.seq$tune.args]]
+plot(pred.seq)
+points(eval.bg(me), pch = 3, col = eval.bg.grp(me), cex = 0.5)
+points(eval.occs(me), pch = 21, bg = eval.occs.grp(me))
+plot(mod.simple)
+plot(mod.complex)
+
+mod.simple<-eval.models(me)[["fc.L_rm.5"]]
+mod.complex <- eval.models(me)[['fc.LQH_rm.1']]
+
+plot(eval.predictions(me)[['fc.L_rm.5']], 
+     legend = FALSE, main = 'L_5 prediction')
+
+plot(eval.predictions(me)[['fc.LQH_rm.1']], 
+     legend = FALSE, main = 'LQH_1 prediction')
+
+
+str(mod.simple)
+mod.simple@results
+
+```
+
+
+### Generate a null model
+```{r null_model}
+
+mod.null <- ENMnulls(me, mod.settings = list(fc = "LQ", rm = 5), no.iter = 100)
+null.results(mod.null) %>% head()
+null.emp.results(mod.null)
+evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "histogram")
+evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "violin")
+```
 
 
