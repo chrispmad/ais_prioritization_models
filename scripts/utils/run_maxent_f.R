@@ -1,6 +1,7 @@
 run_maxent = function(species,
                       predictor_data,
                       vars_to_use = c(),
+                      show_plots_in_R = FALSE,
                       onedrive_path,
                       seed = 12345,
                       number_pseudoabsences = 5000,
@@ -75,7 +76,9 @@ run_maxent = function(species,
   # Test collinearity
   # pred_vals = dat[,c(names(predictor_data))]
   
-  pairs(dat_just_pred_vars, lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
+  if(show_plots_in_R){
+    pairs(dat_just_pred_vars, lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
+  }
   
   cor_res = cor(dat_just_pred_vars) |> 
     as.data.frame()
@@ -262,12 +265,14 @@ run_maxent = function(species,
 
   cat("\nFiles written to output folder...\n")
   
-  list(model_fit = me,
-       maxent_results = maxent_results,
-       key_metrics = key_metrics,
-       predictions_r = predictions,
-       predictions_plot = predictions_plot,
-       eval_plot = eval_plot,
-       habitat_predictions = habitat_or_not
+  return(
+    list(model_fit = me,
+         maxent_results = maxent_results,
+         key_metrics = key_metrics,
+         predictions_r = predictions,
+         predictions_plot = predictions_plot,
+         eval_plot = eval_plot,
+         habitat_predictions = habitat_or_not
+    )
   )
 }
