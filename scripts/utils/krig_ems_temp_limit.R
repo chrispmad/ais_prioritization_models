@@ -12,9 +12,10 @@ library(terra)
 library(raster)
 library(lubridate)
 
-krig_ems<-function(var_name, confidence_interval = 0.99){
-  year_to_search = 'All'
-  
+#krig_ems<-function(var_name, confidence_interval = 0.99){
+  var_name<-"Temperature"
+  Months<-c(2,3,4)
+  confidence_interval<-0.99
   bc = bcmaps::bc_bound() |> 
     dplyr::summarise() |> 
     terra::vect()
@@ -35,7 +36,7 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   raw_data<-raw_data[!is.na(raw_data$LONGITUDE),]
   
   data_sf<-st_as_sf(raw_data, coords = c("LONGITUDE","LATITUDE"), crs = 4326)
-  # data_sf$COLLECTION_DATE<-as.Date(data_sf$COLLECTION_DATE)
+  data_sf$COLLECTION_DATE<-as.Date(data_sf$COLLECTION_DATE)
   
   results<-data_sf %>%
     dplyr::select(c(RESULT,COLLECTION_DATE,LOCATION_TYPE,LOCATION_PURPOSE,MONITORING_LOCATION, geometry)) %>% 
@@ -43,8 +44,12 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
     dplyr::filter(LOCATION_TYPE == "RIVER,STREAM OR CREEK" |
                     LOCATION_TYPE == "MONITORING WELL" |
                     LOCATION_TYPE == "LAKE OR POND")
+  results_hold<-results
   
-  if(confidence_interval != 1){
+   results$season <- quarter(results$COLLECTION_DATE)
+   results$season2<- factor(results$season, labels = c("Winter", "Spring", "Summer", "Autumn"))
+  
+   if(confidence_interval != 1){
     # Find confidence interval for values.
     conf_int_bounds <- t.test(results$RESULT, conf.level = confidence_interval)$conf.int[c(1:2)]
     
@@ -79,16 +84,26 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
     dplyr::mutate(row_id = row_number()) |> 
     sf::st_join(results_albers)
   
+  
+  for (i in season2) {
+    
+  }
+  
   results_albers_overlap = results_albers_overlap |> 
-    dplyr::group_by(row_id) |> 
+    dplyr::group_by(season2, MONITORING_LOCATION) |> 
+    #dplyr::group_by() |> 
     dplyr::mutate(medianVal = median(RESULT)) |> 
-    dplyr::ungroup() |> 
-    dplyr::filter(!duplicated(row_id))
+    dplyr::ungroup()# |> 
+    #dplyr::filter(!duplicated(row_id))
   
   results_albers_as_centroids = results_albers_overlap |> 
     sf::st_centroid()
   
-  ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col = medianVal))
+
+    ggplot() +
+      geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, 
+                                                    col = medianVal))+
+        facet_wrap(~ season2)
   
   #for turbidity
   #results_albers_as_centroids <- results_albers_as_centroids %>% filter(medianVal < 500)
@@ -132,61 +147,45 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   # st_crs(grid10km)
   # st_crs(pointscrs)
   
-  #pointscrs$medianVal<-log10(pointscrs$medianVal+0.001)
-  varKRVar <- autofitVariogram(medianVal ~ 1, 
-                               as(pointscrs, "Spatial"),
-                               verbose=TRUE,
-                               fix.values = c(0,NA,NA))
+  pointscrs<-pointscrs[!is.na(pointscrs$season2),]
   
-  KRvarmod <- gstat(formula=medianVal~1,
-                    locations=as(pointscrs,"Spatial"),
-                    model=varKRVar$var_model
-  )
   
   KRgrid10km <- as(raster(ref), "SpatialGrid")
-  #KRVar_interpolation <- predict(KRvarmod, KRgrid10km, debug.level = -1)
   
-  # interp_r = terra::rast(KRVar_interpolation)
-  # maskrast = terra::mask(interp_r$var1.pred, ref)
-  # 
-  # KRVar_interpolation_raster <- raster(KRVar_interpolation) 
-  # plot(KRVar_interpolation_raster)
-  # 
-  # spatRast<-rast(KRVar_interpolation_raster)
-  # 
-  # # testrast<-crop(spatRast, bc_vect)
-  # # maskrast<-mask(testrast, bc_vect)
-  # # plot(maskrast)
-  # 
-  # KRVar_interpolation_variance_raster<-raster(KRVar_interpolation, layer = "var1.var")
-  # spatRastVar<-rast(KRVar_interpolation_variance_raster)
+  data_list<-split(pointscrs, pointscrs$season2)
   
+  library(purrr)
   library(snow)
   
-  beginCluster(n = 6)
+  raster_list<-map(data_list, function(data){
+    
+    varKRVar <- autofitVariogram(medianVal ~ 1,
+                                 as(data, "Spatial"),
+                                 verbose=TRUE,
+                                 fix.values = c(0,NA,NA))
+    
+    # Kriging
+    KRvarmod <- gstat(formula=medianVal~1,
+                      locations=as(data,"Spatial"),
+                      model=varKRVar$var_model)
+    beginCluster(n = 6)
+    
+    krig_rast<-clusterR(raster(ref), interpolate, args = list(KRvarmod))
+    
+    endCluster()
+    spatRast<-rast(krig_rast)
+    
+    testrast<-crop(spatRast, bc_vect)
+    maskrast<-mask(testrast, bc_vect)
+    return(maskrast)
+  })
   
-  krig_rast<-clusterR(raster(ref), interpolate, args = list(KRvarmod))
+  plot(raster_list$Winter)
+  plot(raster_list$Summer)
   
-  endCluster()
-  spatRast<-rast(krig_rast)
-  plot(spatRast)
-  #spatRast[[1]] <- 10^(spatRast[[1]] - 0.001)
-  plot(spatRast)
-  
-  testrast<-crop(spatRast, bc_vect)
-  maskrast<-mask(testrast, bc_vect)
-  
-  plot(maskrast)
-  
-  
-  
-  
-  var_save<-gsub(" ", "_", var_name)
-  new_path <- gsub("CNF/", "", onedrive_path)
-  
-  
-  terra::writeRaster(spatRast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_krig.tif"), overwrite = T)
-  #terra::writeRaster(spatRastVar, paste0(new_path,"raster/",var_save,"_",year_to_search,"_var_krig.tif"), overwrite = T)
-  terra::writeRaster(maskrast, paste0(new_path,"raster/",var_save,"_",year_to_search,"_masked_krig.tif"), overwrite = T)
-  return(maskrast)
-}
+  for (i in 1:length(raster_list)) {
+    raster <- raster_list[[i]]
+    nm_raster<-names(raster_list[i])
+    raster_name <- paste0("raster_temp_", nm_raster, ".tif")  # Unique filename based on index
+    writeRaster(raster, paste0("rasters/test/", raster_name), overwrite = TRUE)
+  }

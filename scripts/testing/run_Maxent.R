@@ -1,4 +1,5 @@
 library(tidyverse)
+library(ggplot2)
 library(DBI)
 library(bcinvadeR)
 library(terra)
@@ -11,6 +12,8 @@ library(rJava)
 source("ZuurFuncs.R")
 library(ecospat)
 library(ENMeval)
+library(bcmaps)
+
 
 sppOI<-"Asian clam"
 regularisation_levels = c(1:2); feature_classes = c("L","LQ"); number_pseudoabsences<-1000
@@ -29,14 +32,26 @@ source("scripts/utils/run_maxent_f.R")
 extentvect<-terra::vect("./vect/fras_colum.gpkg")
 extentvect<-project(extentvect, "EPSG:4326")
 
+bc<-bc_bound()
+# ggplot() +
+#   geom_sf(data = bc, fill = "lightblue") +
+#   theme_minimal() +
+#   labs(title = "British Columbia Geometry")
+extentvect<- project(vect(bc),"EPSG:4326")
+
 predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
 
+predictor_data <- predictor_data[[c("pH", "calc", "dist_to_highways", "population_density", 
+                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll", 
+                                    "Conductivity", "Oxygen_Dissolved", "Turbidity", 
+                                    "temp_Autumn", "temp_Spring", "temp_Summer", "temp_Winter")]]
+
 #predictor_data<-terra::subset(predictor_data, c(10,5,9,7,8))
 #plot(predictor_data)
 #if(!file.exists("data/goldfish_example_data.rds")){
-  goldfish = bcinvadeR::grab_aq_occ_data('asian clam')
+  goldfish = bcinvadeR::grab_aq_occ_data('goldfish')
 
 
   # Ensure unique coordinates by adding
@@ -74,7 +89,7 @@ bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
 # for aquatic organisms.
 watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
 
-watercourses
+plot(watercourses)
 
 
 
@@ -111,11 +126,11 @@ pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(dat),
 the_block <- get.block(presences,bg=pseudoabsences, orientation = "lat_lon")
 table(the_block$occs.grp)
 
-evalplot.grps(pts = presences, pts.grp = the_block$occs.grp, envs = raster(predictor_data_low_cor$Annual_Mean_Temperature))+
-  ggplot2::ggtitle("Spatial block partitions: occurrences")
-
-evalplot.grps(pts = pseudoabsences, pts.grp = the_block$bg.grp, envs = raster(predictor_data_low_cor$Annual_Mean_Temperature))+
-  ggplot2::ggtitle("Spatial block partitions: background")
+# evalplot.grps(pts = presences, pts.grp = the_block$occs.grp, envs = raster(predictor_data_low_cor$Annual_Mean_Temperature))+
+#   ggplot2::ggtitle("Spatial block partitions: occurrences")
+# 
+# evalplot.grps(pts = pseudoabsences, pts.grp = the_block$bg.grp, envs = raster(predictor_data_low_cor$Annual_Mean_Temperature))+
+#   ggplot2::ggtitle("Spatial block partitions: background")
 
 r_stack<-raster::stack(predictor_data)
 
@@ -334,8 +349,8 @@ predictions_plot = ggplot() +
     plot.caption = ggtext::element_markdown()
   )
 
-
-rayshader::plot_gg(predictions_plot)
+predictions_plot
+#rayshader::plot_gg(predictions_plot)
 # Predicted habitat vs. not habitat plot, using 
 # whichever threshold approach selected in function call.
 habitat_or_not = me@predictions[[opt.aicc$tune.args]]
