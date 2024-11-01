@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, error = FALSE, warning = FALSE)
 
 library(tidyverse)
 library(ggplot2)
@@ -19,11 +19,12 @@ library(predicts)
 library(ggpubr)
 library(dismo)
 library(rJava)
-source("ZuurFuncs.R")
+#source("ZuurFuncs.R")
 library(ecospat)
 library(ENMeval)
 library(bcmaps)
 library(data.table)
+library(here)
 
 sppOI<-"asian clam"
 regularisation_levels = c(1:5); feature_classes = c("L","LQ","LQH"); number_pseudoabsences<-1000
@@ -38,9 +39,9 @@ proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
 onedrive_path = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
 
-source("scripts/utils/prep_predictor_data_f.R")
-source("scripts/utils/run_maxent_f.R")
-source("scripts/utils/thin_occ.R")
+source(here("scripts/utils/prep_predictor_data_f.R"))
+source(here("scripts/utils/run_maxent_f.R"))
+source(here("scripts/utils/thin_occ.R"))
 
 ```
 
@@ -129,7 +130,7 @@ samp<- dat %>%
 ### Plotting occurrences and predictors {.tabset}
 
 #### Location of spp
-
+The locations of the species across the provience. 
 ```{r map_location}
 
 ggplot()+
@@ -151,8 +152,8 @@ ggplot()+
 ```
 
 
-#### Annual Mean Temperature
-
+#### Boxplots of predictors at presence locations
+The values of the predictors in each raster are extracted at the locations of the occurrences. 
 ```{r boxplot}
 
 melt_dat<-melt(datDT, id.vars = c(1:9), measure.vars = c(10:ncol(dat)))
@@ -257,23 +258,23 @@ occs.z <- occs.z |> st_drop_geometry()
 bg.z <- bg.z |> st_drop_geometry()
 
 
-evalplot.envSim.hist(sim.type = "mess", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+ # evalplot.envSim.hist(sim.type = "mess", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+ #                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
 
-evalplot.envSim.hist(sim.type = "most_diff", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+ # evalplot.envSim.hist(sim.type = "most_diff", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+ #                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
 
-evalplot.envSim.hist(sim.type = "most_sim", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
-                     occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
+ # evalplot.envSim.hist(sim.type = "most_sim", ref.data = "pres", occs.z = occs.z, bg.z = bg.z,
+ #                      occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp, categoricals = NULL)
 
 
-# evalplot.envSim.map(sim.type = "mess", ref.data = "pres", envs = r_stack, occs.z = occs.z,
-#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
-#                     categoricals = NULL, bb.buf = 7)
-# 
-# evalplot.envSim.map(sim.type = "most_diff", ref.data = "pres", envs = r_stack, occs.z = occs.z,
-#                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
-#                     categoricals = NULL, bb.buf = 7)
+ # evalplot.envSim.map(sim.type = "mess", ref.data = "pres", envs = r_stack, occs.z = occs.z,
+ #                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
+ #                     categoricals = NULL, bb.buf = 7)
+
+ # evalplot.envSim.map(sim.type = "most_diff", ref.data = "pres", envs = r_stack, occs.z = occs.z,
+ #                     bg.z = bg.z, occs.grp = the_block$occs.grp, bg.grp = the_block$bg.grp,
+ #                    categoricals = NULL, bb.buf = 7)
 
 ```
 
@@ -286,7 +287,7 @@ me = ENMevaluate(occs = pres_xy,
                  partitions = 'block', 
                  tune.args = list(fc = feature_classes, 
                                   rm = regularisation_levels))
-me
+me@results
 
 
 ```
@@ -298,35 +299,125 @@ Running the model, there are combinations of the feature types: linear, quadrait
 This calculates the Schoeners D (or Morans I) for the fitted models. Values of Schoener's D that are closer to one indicate better overlap, with values tending to 0 are no overlap. This means that higher values in the table indicate more similar models.
 ```{r get_results}
 overlap <- calc.niche.overlap(me@predictions, overlapStat = "D")
-overlap |>  View()
+overlap
 
 ```
 
+The performance statistics for the model describe the feature classes that were used (linear, quadratic or hinge) and the regularisation multiplier applied to the model. Tune.args is a unique identifier based on the feature classes and regularisation parameter. 
+
+The AUC is the area under the curve for the training data. This value indicates how hte model has distinguished between the presences and background points on the training set. Higher scores indicate better fit here.
+
+The CBI is the Boyce Index for the training data. This measures how well the model predictions align with the known occurrences. Higher values are indicative of better alignment between model predictions and observed distributions of occurrences.
+
+auc.diff.avg and auc.diff.sd: The average and standard deviation of the difference between training and validation AUC. Smaller differences and lower variation between training and validation AUC scores indicate more stable performance, suggesting a balanced model that generalizes well.
+
+Cross validation is completed on the models, where the occurrences sre split into a number of folds. The folds in this isntance are the blocks, described above.
+
+auc.val.avg and auc.val.sd: Average and standard deviation of the AUC scores for the validation data, calculated across cross-validation runs. Higher auc.val.avg values indicate better generalization, while a lower auc.val.sd indicates that performance is consistent across subsets of the data.
+
+cbi.val.avg and cbi.val.sd: Continuous Boyce Index values for the validation data. Similar to cbi.train, higher cbi.val.avg indicates a better match between predicted suitability and observed presences in validation data.
+
+or.10p.avg and or.10p.sd: Average and standard deviation of the 10th percentile omission rate, which measures the model's ability to classify known presences accurately. A lower value here suggests a more accurate model.
+
+or.mtp.avg and or.mtp.sd: The minimum training presence (MTP) omission rate. This shows how well the model performs using the strictest threshold, aiming to capture all known presences.
+
+AICc: Corrected Akaike Information Criterion. Lower AICc values indicate better fit to the data with fewer parameters, balancing model fit with complexity. Here, delta.AICc shows the difference between the AICc of each model and the model with the lowest AICc, and w.AIC is the Akaike weight, indicating the relative likelihood of each model.
+
+ncoef: The number of coefficients in the model. Higher values indicate greater model complexity.
 
 
 ```{r results_summary_stats}
 # this gives the performance statistics for the whole set of models
-me@results
+me@results 
 
 # and for the partitions. This is done by block - 4 of them
-me@results.partitions
+#me@results.partitions
 
-eval.algorithm(me)
-eval.tune.settings(me)
-eval.partition.method(me)
-eval.results(me) |>  View()
 
-eval.results.partitions(me) |>  View()
+
+
+# eval.algorithm(me)
+# eval.tune.settings(me)
+#eval.partition.method(me)
+eval.results(me) 
+
+eval.results.partitions(me)
 
 eval.predictions(me)
 
 ```
 
-```{r deeper_model}
-m1.mx <- eval.models(me)[["fc.LQH_rm.1"]]
-m1.mx$betas
 
-evalplot.stats(me, stats = "or.mtp", color = "fc", x.var = "rm")
+```{r top_5}
+top5 <- me@results |> 
+  filter(!is.na(AICc)) |> 
+  arrange(AICc, delta.AICc, desc(w.AIC)) |> 
+  slice_head(n = 5)
+top5
+```
+
+I have found the models with the lowest AICc. Delta AICc shows the difference between the top model and the others. The wAICc would sum to 1 for all the models. This is a normalised AICc that shows how likely one model is compared to another. 
+
+While the "best" model is the first one on this list, with linear fits only and regularisation of 2. I would select the second model including quadratic features. Biologically, species may respond in a non-linear manner to temperature, dissolved oxygen, pH etc. The difference in AICc between the top two models is very small, which would suggest that the model fit will not be compromised by this choice.
+
+```{r run_new_models}
+
+
+model1_l = ENMevaluate(occs = pres_xy, 
+                 envs = predictor_data, 
+                 bg = pseudoabsences, 
+                 algorithm = 'maxent.jar', 
+                 partitions = 'block', 
+                 tune.args = list(fc = "L", 
+                                  rm = 2))
+model1_l
+
+model1_lq = ENMevaluate(occs = pres_xy, 
+                 envs = predictor_data, 
+                 bg = pseudoabsences, 
+                 algorithm = 'maxent.jar', 
+                 partitions = 'block', 
+                 tune.args = list(fc = "LQ", 
+                                  rm = 1))
+model1_lq
+
+
+```
+
+
+```{r included_coeff}
+
+model1_l@variable.importance$fc.L_rm.2 |> 
+  mutate(percent.contribution = as.numeric(percent.contribution)) |> 
+  #filter(percent.contribution > 0.0000000001) |> 
+  arrange(desc(percent.contribution))
+
+model1_lq@variable.importance$fc.LQ_rm.1 |> 
+  mutate(percent.contribution = as.numeric(percent.contribution)) |> 
+  #filter(percent.contribution > 0.0000000001) |> 
+  arrange(desc(percent.contribution))
+
+```
+
+
+```{r compare_top}
+
+plot(model1_l@predictions, main = paste0("Linear; regularisation: ", model1_l@results$rm, "; No. coefficients: ",
+                                         model1_l@results$ncoef))
+
+plot(model1_lq@predictions, main = paste0("Linear quadratic; regularisation: ", model1_lq@results$rm, "; No. coefficients:", model1_lq@results$ncoef))
+
+
+
+```
+
+
+
+```{r deeper_model}
+# m1.mx <- eval.models(me)[["fc.LQH_rm.1"]]
+# #m1.mx$betas
+# 
+# evalplot.stats(me, stats = "or.mtp", color = "fc", x.var = "rm")
 ```
 
 ```{r select_model}
@@ -343,18 +434,27 @@ opt.seq
 
 
 mod.seq <- eval.models(me)[[opt.seq$tune.args]]
-mod.seq$betas
+#mod.seq$betas
 plot(mod.seq, type="cloglog")
 
 pred.seq <- eval.predictions(me)[[opt.seq$tune.args]]
 plot(pred.seq)
 points(eval.bg(me), pch = 3, col = eval.bg.grp(me), cex = 0.5)
 points(eval.occs(me), pch = 21, bg = eval.occs.grp(me))
-plot(mod.simple)
-plot(mod.complex)
 
 mod.simple<-eval.models(me)[["fc.L_rm.5"]]
 mod.complex <- eval.models(me)[['fc.LQH_rm.1']]
+plot(mod.simple)
+plot(mod.complex)
+
+
+
+
+eval.predictions(me)[["fc.L_rm.5"]]
+eval.occs(me)[["fc.L_rm.5"]]
+eval.occs(me)[["fc.LQH_rm.1"]]
+eval.variable.importance(me)[["fc.L_rm.5"]]
+eval.models(me)[["fc.L_rm.5"]]
 
 plot(eval.predictions(me)[['fc.L_rm.5']], 
      legend = FALSE, main = 'L_5 prediction')
@@ -363,8 +463,12 @@ plot(eval.predictions(me)[['fc.LQH_rm.1']],
      legend = FALSE, main = 'LQH_1 prediction')
 
 
+
+
 str(mod.simple)
-mod.simple@results
+mod.simple@results 
+
+
 
 ```
 
@@ -372,11 +476,12 @@ mod.simple@results
 ### Generate a null model
 ```{r null_model}
 
-mod.null <- ENMnulls(me, mod.settings = list(fc = "LQ", rm = 5), no.iter = 100)
-null.results(mod.null) %>% head()
-null.emp.results(mod.null)
-evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "histogram")
-evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "violin")
+# mod.null <- ENMnulls(me, mod.settings = list(fc = "LQ", rm = 5), no.iter = 100)
+# null.results(mod.null) %>% head()
+# null.emp.results(mod.null)
+# evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "histogram")
+# evalplot.nulls(mod.null, stats = c("or.10p", "auc.val"), plot.type = "violin")
 ```
+
 
 
