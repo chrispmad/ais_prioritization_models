@@ -80,8 +80,9 @@ run_maxent = function(species,
     pairs(dat_just_pred_vars, lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
   }
   
-  cor_res = cor(dat_just_pred_vars) |> 
-    as.data.frame()
+  # browser()
+  cor_res = cor(dat_just_pred_vars |> dplyr::select(dplyr::where(is.numeric))) |>
+   as.data.frame()
   
   # Pull out highly correlated variables.
   highly_correlated_vars = cor_res |>   
