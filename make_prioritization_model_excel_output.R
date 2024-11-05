@@ -19,10 +19,66 @@ library(ENMeval)
 source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
 
-#set locations
-
+# Get / set file paths
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+
+# Find which drive letter you (or I!) are using to link to the 2 SCIENCE - Invasives folder.
+sysdrivereport <- system("wmic logicaldisk get caption", intern = TRUE)
+drive_letters = substr(sysdrivereport[-c(1, length(sysdrivereport))], 1, 1)
+drive_letter_to_use = NA
+for(drive_letter in drive_letters[!drive_letters %in% c("C","H")]){
+  while(is.na(drive_letter_to_use)){
+    subdirs = list.dirs(path = paste0(drive_letter,":/"), recursive = F)
+    # Sometimes people have this drive set to one level above 'General' instead of at 'General', as I do.
+    if("General" %in% subdirs){
+      subdirs = list.dirs(path = paste0(drive_letter,":/General/"), recursive = F)
+      if(length(subdirs[stringr::str_detect(subdirs, "2 SCIENCE - Invasives")]) > 0){
+        drive_letter_to_use <- paste0(drive_letter,":/General/")
+        print("Found your drive letter!")
+      }
+    }
+    else {
+      if(length(subdirs[stringr::str_detect(subdirs, "2 SCIENCE - Invasives")]) > 0){
+        drive_letter_to_use <- paste0(drive_letter,":/")
+        print("Found your drive letter!")
+      }
+    }
+  }
+}
+
+# list of invasive species on our watch list.
+pr_sp = readxl::read_excel(paste0(drive_letter_to_use,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
+                            skip = 20)
+names(pr_sp) <- c("group","status","name","genus","species")
+# Just for our species of interest.
+pr_sp = pr_sp |>
+  dplyr::filter(group == 'Fish' | name %in% c("Whirling disease") | stringr::str_detect(name, '(mussel|crayfish|mystery snail|mudsnail|clam|jellyfish|shrimp|waterflea)')) |> 
+# Split out grouped species names into separate rows.
+  dplyr::mutate(name = stringr::str_squish(name)) |>
+  dplyr::filter(name != 'Bullhead') |>
+  dplyr::arrange(name) |> 
+# Add a couple alternate ways of spelling species common names.
+  dplyr::bind_rows(
+    tidyr::tibble(
+      group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
+                'Other invertebrates','Other invertebrates','Other invertebrates',
+                'Fish','Fish'),
+      status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
+                 'Provincial Containment','Provincial Containment','Provincial Containment','Management',
+                 'Prevent'),
+      name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
+               'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
+               'Mosquitofish'),
+      genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
+                'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
+      species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
+                  'fluminea','fluminea','fluminea','vitreus','affinis')
+    )
+  )
+
+# Ensure species' common names are Sentence case.
+pr_sp$name = stringr::str_to_sentence(pr_sp$name)
 
 # Make BC shapefile.
 bc = bcmaps::bc_bound() |> 
@@ -104,7 +160,7 @@ all_wb = d |> dplyr::summarise()
 
 # Bring in / calculate variables
 
-# 1. Number of occurrence in waterbody
+# 1. Number of records in waterbody
 
 occ_species = unique(d$Species) |> 
   purrr::map( ~ {bcinvadeR::grab_aq_occ_data(.x)}) |> 
@@ -119,12 +175,24 @@ occ_species = occ_species |>
   )
 )
 
-d$occurrences_in_wb = 0
+d$records_in_wb = 0
 
 for(i in 1:nrow(d)){
   recs_by_sp = occ_species[occ_species$Species == d[i,]$Species,]
   recs_by_wb = recs_by_sp |> sf::st_filter(st_buffer(d[i,]$geometry, 20))
-  d[i,]$occurrences_in_wb = nrow(recs_by_wb)
+  d[i,]$records_in_wb = nrow(recs_by_wb)
+}
+
+# See if other AIS are in the waterbody - if so, count up number of unique species!
+d$other_ais_in_wb = 0
+d$other_ais_in_wb_names = NA
+
+for(i in 1:nrow(d)){
+  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = d[1,])
+  # Just keep invasive species from our list.
+  ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
+  d[i,]$other_ais_in_wb = length(unique(ais_in_wb$Species))
+  d[i,]$other_ais_in_wb_names = paste0(unique(ais_in_wb$Species), collapse = ', ')
 }
 
 # 2. New to Waterbody - e.g. are occurrence records for waterbody from the last year?
@@ -239,10 +307,10 @@ for(i in 1:nrow(d)){
 d_sum = d |> 
   sf::st_drop_geometry() |> 
   rowwise() |> 
-  dplyr::mutate(occurrences_in_wb_b = dplyr::case_when(
-    occurrences_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.33 ~ 1,
-    occurrences_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.66 ~ 2,
-    occurrences_in_wb / nrow(occ_species[occ_species$Species == Species,]) > 0.66 ~ 3,
+  dplyr::mutate(records_in_wb_b = dplyr::case_when(
+    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.33 ~ 1,
+    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.66 ~ 2,
+    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) > 0.66 ~ 3,
     T ~ 0
   )) |> 
   dplyr::mutate(sara_in_wb_b = dplyr::case_when(
