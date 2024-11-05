@@ -188,7 +188,7 @@ d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
 for(i in 1:nrow(d)){
-  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = d[1,])
+  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = d[i,])
   # Just keep invasive species from our list.
   ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
   d[i,]$other_ais_in_wb = length(unique(ais_in_wb$Species))
