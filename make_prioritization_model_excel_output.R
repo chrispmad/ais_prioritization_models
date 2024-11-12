@@ -47,6 +47,8 @@ for(drive_letter in drive_letters[!drive_letters %in% c("C","H")]){
   }
 }
 
+output_folder = paste0(drive_letter_to_use,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
+
 # list of invasive species on our watch list.
 pr_sp = readxl::read_excel(paste0(drive_letter_to_use,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
                             skip = 20)
@@ -187,12 +189,20 @@ for(i in 1:nrow(d)){
 d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
-for(i in 1:nrow(d)){
-  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = d[i,])
+for(the_wb in unique_wbs){
+  
+  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
+  
   # Just keep invasive species from our list.
   ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
-  d[i,]$other_ais_in_wb = length(unique(ais_in_wb$Species))
-  d[i,]$other_ais_in_wb_names = paste0(unique(ais_in_wb$Species), collapse = ', ')
+  
+  other_ais_in_wb = unique(ais_in_wb$Species)
+  
+  for(i in 1:nrow(d[d$Waterbody == the_wb,])){
+    other_ais_in_wb = other_ais_in_wb[other_ais_in_wb != d[i,]$Species]
+    d[d$Waterbody == the_wb,][i,]$other_ais_in_wb = length(other_ais_in_wb)
+    d[d$Waterbody == the_wb,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb, collapse = ', ')
+  }
 }
 
 # 2. New to Waterbody - e.g. are occurrence records for waterbody from the last year?
@@ -254,22 +264,22 @@ for(i in 1:nrow(d)){
   d[i,]$cdc_listed_in_wb_names = paste0(unique(cdc_by_wb$ENG_NAME),collapse=', ')
 }
 
-# 4. MaxEnt predicted suitability of waterbodies
-maxent_results_l = unique(d$Species) |> 
-  purrr::map( ~ {
-
-    sp_occ = occ_species[occ_species$Species == .x,]
-    
-    maxent_results = run_maxent(species = sp_occ, 
-               predictor_data = predictor_data,
-               onedrive_path = onedrive_wd,
-               number_pseudoabsences = 10000
-    )
-    
-    maxent_results
-  })
-
-names(maxent_results_l) = unique(d$Species)
+# # 4. MaxEnt predicted suitability of waterbodies
+# maxent_results_l = unique(d$Species) |> 
+#   purrr::map( ~ {
+# 
+#     sp_occ = occ_species[occ_species$Species == .x,]
+#     
+#     maxent_results = run_maxent(species = sp_occ, 
+#                predictor_data = predictor_data,
+#                onedrive_path = onedrive_wd,
+#                number_pseudoabsences = 10000
+#     )
+#     
+#     maxent_results
+#   })
+# 
+# names(maxent_results_l) = unique(d$Species)
 
 # Snag the predictions_r object from each element of the list.
 d$wb_maxent_suitability = 0
@@ -277,9 +287,12 @@ d$wb_maxent_suitability = 0
 for(i in 1:nrow(d)){
   
   the_species = d[i,]$Species
+  the_species_snake = snakecase::to_snake_case(the_species)
+  species_folder = paste0(output_folder,the_species_snake,"/")
   
-  the_pred_r = maxent_results_l[[the_species]]$predictions_r
-  
+  # Read maxent results in for species
+  the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
+
   # Pull out average values for the waterbody.
   mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'mean', na.rm = T)
   
@@ -295,7 +308,7 @@ fnpip = st_make_valid(fnpip)
 d$first_nations_cons_area_overlapped = NA
 
 for(i in 1:nrow(d)){
-  fnpip_con_areas = fnpip |> sf::st_filter(d[i,]$geometry)
+  fnpip_con_areas = fnpip |> sf::st_filter(sf::st_buffer(d[i,]$geometry,10000))
   # d[i,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CNSLTN_A_2),collapse = ', ')
   d[i,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
 }
@@ -314,9 +327,10 @@ d_sum = d |>
     T ~ 0
   )) |> 
   dplyr::mutate(sara_in_wb_b = dplyr::case_when(
-    sara_in_wb <= 1 ~ 1,
-    sara_in_wb <= 3 ~ 2,
-    sara_in_wb > 3 ~ 3,
+    sara_in_wb == 0 ~ 0,
+    sara_in_wb == 1 ~ 1,
+    sara_in_wb == 2 ~ 2,
+    sara_in_wb >= 3 ~ 3,
     T ~ 0
   )) |> 
   dplyr::mutate(m_suit_b = dplyr::case_when(
@@ -325,10 +339,11 @@ d_sum = d |>
     wb_maxent_suitability > 0.66 ~ 3,
     T ~ 0
   )) |> 
+  dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
   ungroup() |> 
   tidyr::pivot_longer(cols = dplyr::ends_with("_b")) |> 
   dplyr::group_by(Region, Species, Waterbody) |> 
-  dplyr::mutate(summed_bins = sum(value)) |> 
+  dplyr::mutate(summed_bins = round(sum(value),0)) |> 
   dplyr::ungroup() |> 
   tidyr::pivot_wider()
 
@@ -336,6 +351,21 @@ d_sum = d |>
 d_sum = d_sum |> 
   dplyr::select(names(d_sum)[names(d_sum) != 'summed_bins'], "summed_bins")
 
+# Make column names nicer.
+d_sum = d_sum |> 
+  dplyr::rename(
+    `Total Records` = records_in_wb,
+    `Other AIS in WB` = other_ais_in_wb,
+    `Other AIS in WB names` = other_ais_in_wb_names,
+    `New to Waterbody` = new_to_waterbody,
+    `Oldest Record` = oldest_record,
+    `Distinct SARA in WB` = sara_in_wb,
+    `Distinct SARA in WB names` = sara_in_wb_names,
+    `CDC-listed species in WB` = cdc_listed_in_wb,
+    `CDC-listed species in WB names` = cdc_listed_in_wb_names,
+    `MaxEnt Habitat Suitability` = wb_maxent_suitability,
+    `First Nations Consultation Areas` = first_nations_cons_area_overlapped
+  )
 # =========================================
 
 # Create excel workbook
@@ -352,14 +382,18 @@ red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour
 openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="summed_bins"))
 
 openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(d_sum), widths = "auto")
-openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == 'first_nations_cons_area_overlapped'), widths = 30)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == "First Nations Consultation Areas"), widths = 30)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == 'Other AIS in WB names'), widths = 40)
 
 # Add metadata.
 openxlsx::addWorksheet(my_wb, "metadata")
 
 metadata = tibble(
-  variable = c("new_to_waterbody"),
-  notes = c("Is the oldest occurrence record for this species in this waterbody within the last six months (this time range updates each time this R script is re-run)")
+  variable = c("New to Waterbody","First Nations Consultation Areas","Oldest Record Bin"),
+  notes = c("Is the oldest occurrence record for this species in this waterbody within the last six months (this time range updates each time this R script is re-run)",
+            "The First Nations PIP Consultation Areas that are within 10 kilometers of the waterbody",
+            "Records from this year receive a level of 1, while records from previous years receive an expoentially smaller priority number. 
+            To calculate this, we take the reciprocal of the log of the current year minus the oldest record in the waterbody plus 2.71")
 )
 
 openxlsx::writeData(my_wb, "metadata", metadata)

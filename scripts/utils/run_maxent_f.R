@@ -43,6 +43,10 @@ run_maxent = function(species,
     stop("No predictor data entered; please supply at least one {terra} spatRaster.")
   }
   
+  # Record the number of occurrence points at this stage in the function; we'll use this
+  # in the metadata file that is produced.
+  number_occurrences_at_outset = nrow(dat)
+  
   # Make {terra} vector of BC.
   bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
   
@@ -244,7 +248,7 @@ run_maxent = function(species,
   )
   
   # Check for output folder; if it exists already, delete contents.
-  output_fn = paste0(output_folder,"/",species_name,"_results/")
+  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
   
   if(!dir.exists(output_fn)){
     dir.create(output_fn)
@@ -255,9 +259,15 @@ run_maxent = function(species,
       lapply(\(x) file.remove(x))
   }
   
+  file_version_csv = data.frame(
+    run_date = lubridate::ymd(Sys.Date()),
+    number_occurrences = number_occurrences_at_outset
+  )
+  
   file.copy(from = maxent_html, to = paste0(output_fn,"MaxEnt_results.html"))
   write.csv(key_metrics, paste0(output_fn,"MaxEnt_key_metrics.csv"), row.names = F)
   write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv", row.names = F))
+  write.csv(file_version_csv, paste0(output_fn,"MaxEnt_model_run_metadata.csv"), row.names = F)
   terra::writeRaster(predictions, paste0(output_fn,"MaxEnt_prediction_raster.tif"))
   terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
