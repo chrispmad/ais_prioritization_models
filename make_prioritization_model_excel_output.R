@@ -10,7 +10,7 @@ library(predicts)
 library(ggpubr)
 library(dismo)
 library(rJava)
-source("ZuurFuncs.R")
+#source("ZuurFuncs.R")
 library(ecospat)
 library(ENMeval)
 
