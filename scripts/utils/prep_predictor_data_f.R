@@ -63,6 +63,11 @@ prep_predictor_data = function(proj_path,
   
   names(elev) = "elev"
   
+  # Slope 
+  slope = terra::rast(paste0(onedrive_path,"CNF/slope_BC.tif"))
+  
+  names(slope) = 'slope'
+  
   # Bring in waterbody connectivity
   wb_conn = terra::rast(paste0(onedrive_path,"CNF/stream_order_three_plus_raster.tif"))
   
@@ -134,33 +139,20 @@ prep_predictor_data = function(proj_path,
     names(.x) = .y
     .x
   })
-  # # Combine rasters that code for very similar things... e.g. dissolved or not explicitly dissolved...
-  # unique_rasters = data.frame(group_name = unlist(unique(stringr::str_extract(raster_names,"((_)?[a-zA-Z])*"))))
-  # 
-  # unique_rasters = unique_rasters |> 
-  #   dplyr::mutate(group_id = row_number())
-  # 
-  # raster_groups = data.frame(raster_name = raster_names) |> 
-  #   dplyr::rowwise() |> 
-  #   dplyr::mutate(group_id = unique_rasters[stringr::str_detect(raster_name, unique_rasters$group_name),]$group_id) |> 
-  #   dplyr::ungroup()
-  # 
-  # print("Combining rasters...")
-  # 
-  # unique_rasters$group_id |> 
-  #   purrr::map( ~ {
-  #     the_r = interpolated_rasts[c(raster_groups[raster_groups$group_id == i,]$raster_name)]
-  #     # Combine rasters in the same group.
-  #     Reduce(x = the_r, f = '+')
-  #     names(the_r) = unique_rasters[i,]$group_name
-  #   })
-  # 
+  
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
+<<<<<<< HEAD
                  ph_NAM,Calc_NAM,roads,elev,pop_dens,
                  boat_dests,days_fished, slope_bc)
   names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
                     "popn_density", "boats_destination", "days_fished", "slope")
+=======
+                 ph_NAM,Calc_NAM,roads,elev,slope,pop_dens,
+                 boat_dests,days_fished)
+  names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
+                    "slope", "popn_density", "boats_destination", "days_fished")
+>>>>>>> 30b5474226cc55825680422f777a00404cba407c
   rasters = append(rasters, interpolated_rasts)
   rasters<- append(rasters, interpolated_rasts_limits)
   rasters<- append(rasters, seasonTemps)
