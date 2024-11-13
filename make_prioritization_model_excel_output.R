@@ -16,41 +16,18 @@ library(ENMeval)
 
 # =========================================
 
-source("scripts/utils/prep_predictor_data_f.R")
-source("scripts/utils/run_maxent_f.R")
+# source("scripts/utils/prep_predictor_data_f.R")
+# source("scripts/utils/run_maxent_f.R")
 
 # Get / set file paths
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
 
-# Find which drive letter you (or I!) are using to link to the 2 SCIENCE - Invasives folder.
-sysdrivereport <- system("wmic logicaldisk get caption", intern = TRUE)
-drive_letters = substr(sysdrivereport[-c(1, length(sysdrivereport))], 1, 1)
-drive_letter_to_use = NA
-for(drive_letter in drive_letters[!drive_letters %in% c("C","H")]){
-  while(is.na(drive_letter_to_use)){
-    subdirs = list.dirs(path = paste0(drive_letter,":/"), recursive = F)
-    # Sometimes people have this drive set to one level above 'General' instead of at 'General', as I do.
-    if("General" %in% subdirs){
-      subdirs = list.dirs(path = paste0(drive_letter,":/General/"), recursive = F)
-      if(length(subdirs[stringr::str_detect(subdirs, "2 SCIENCE - Invasives")]) > 0){
-        drive_letter_to_use <- paste0(drive_letter,":/General/")
-        print("Found your drive letter!")
-      }
-    }
-    else {
-      if(length(subdirs[stringr::str_detect(subdirs, "2 SCIENCE - Invasives")]) > 0){
-        drive_letter_to_use <- paste0(drive_letter,":/")
-        print("Found your drive letter!")
-      }
-    }
-  }
-}
-
-output_folder = paste0(drive_letter_to_use,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
+output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
 
 # list of invasive species on our watch list.
-pr_sp = readxl::read_excel(paste0(drive_letter_to_use,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
+pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
                             skip = 20)
 names(pr_sp) <- c("group","status","name","genus","species")
 # Just for our species of interest.
@@ -90,9 +67,9 @@ bc = bcmaps::bc_bound() |>
 # Grab regions of BC. These will be useful for finding waterbodies.
 regs = bcmaps::nr_regions() |> sf::st_transform(4326)
 
-predictor_data = prep_predictor_data(proj_path = proj_wd,
-                                     onedrive_path = paste0(onedrive_wd),
-                                     ext_vect = bc)
+# predictor_data = prep_predictor_data(proj_path = proj_wd,
+#                                      onedrive_path = paste0(onedrive_wd),
+#                                      ext_vect = bc)
 
 # =========================================
 
@@ -189,7 +166,7 @@ for(i in 1:nrow(d)){
 d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
-for(the_wb in unique_wbs){
+for(the_wb in wbs_list){
   
   species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
   
@@ -198,10 +175,10 @@ for(the_wb in unique_wbs){
   
   other_ais_in_wb = unique(ais_in_wb$Species)
   
-  for(i in 1:nrow(d[d$Waterbody == the_wb,])){
+  for(i in 1:nrow(d[d$Waterbody == the_wb$wb_name,])){
     other_ais_in_wb = other_ais_in_wb[other_ais_in_wb != d[i,]$Species]
-    d[d$Waterbody == the_wb,][i,]$other_ais_in_wb = length(other_ais_in_wb)
-    d[d$Waterbody == the_wb,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb, collapse = ', ')
+    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb)
+    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb, collapse = ', ')
   }
 }
 
@@ -343,7 +320,7 @@ d_sum = d |>
   ungroup() |> 
   tidyr::pivot_longer(cols = dplyr::ends_with("_b")) |> 
   dplyr::group_by(Region, Species, Waterbody) |> 
-  dplyr::mutate(summed_bins = round(sum(value),0)) |> 
+  dplyr::mutate(summed_bins = round(sum(value,na.rm=T),0)) |> 
   dplyr::ungroup() |> 
   tidyr::pivot_wider()
 

@@ -28,11 +28,11 @@ bc = bcmaps::bc_bound() |> dplyr::summarise() |> sf::st_transform(4326) |> terra
 source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
 
-# scheduled_maxent_results = data.frame(
-#   predictor_data_successfully_loaded = F,
-#   error_at = 'None',
-#   error = FALSE
-# )
+file.copy(
+    from = paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/Master Incidence Report Records.xlsx"),
+    to = 'data/Master Incidence Report Records.xlsx',
+    overwrite = T
+  )
 
 predictor_data = prep_predictor_data(proj_path = proj_wd,
                              onedrive_path = paste0(onedrive_wd),
@@ -78,7 +78,11 @@ pr_sp$name = stringr::str_to_sentence(pr_sp$name)
 
 # Do record search for all species of interest! This takes a minute.
 occ_dat_search_results = pr_sp$name |>
-  lapply(\(x) tryCatch(bcinvadeR::grab_aq_occ_data(x),error=function(e)return(NULL)))
+  lapply(\(x) {
+    tryCatch(bcinvadeR::grab_aq_occ_data(x, 
+                                         excel_path = paste0(getwd(),"/data/Master Incidence Report Records.xlsx")),
+                       error=function(e)return(NULL))
+    })
 
 occ_dat_res_b = dplyr::bind_rows(occ_dat_search_results)
 
@@ -130,47 +134,59 @@ occ_dat_res_f = occ_dat_res_b |>
 
 unique_sp = unique(occ_dat_res_f$Species)
 
-for(i in 1:length(unique_sp[1])){
+for(i in 1:length(unique_sp)){
   
   print(i)
-  
+
   the_sp = unique_sp[i]
   the_sp_snake = snakecase::to_snake_case(the_sp)
   the_sp_occ = occ_dat_res_f |> dplyr::filter(Species == the_sp)
   
-  # Look to see if this species needs maxent rerun - either because it has new occurrences
-  # or because its last run was more than 2 months prior.
-  maxent_metadata = read.csv(file = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/",the_sp_snake,"/MaxEnt_model_run_metadata.csv"))
-    
-  # Two tests of whether we should rerun maxent or not:
-  # 1. Have 3 months elapsed since we last ran this species?
-  past_expiration_date = lubridate::ymd(Sys.Date()) > lubridate::ymd(maxent_metadata$run_date) + lubridate::days(90)
-  # 2. Have any additional occurrences been added within BC?
-  new_occurrences = nrow(the_sp_occ) > maxent_metadata$number_occurrences
-  
-  if(past_expiration_date | new_occurrences){
-    
-    print(paste0("Rerunning maxent for ",the_sp))
-    
-    vars_for_this_species = predictor_var_matrix |> 
-      dplyr::filter(name == the_sp) |> 
-      dplyr::rename(species = name) |> 
-      tidyr::pivot_longer(-species) |> 
-      dplyr::filter(value) |> 
-      dplyr::select(name) |> 
-      dplyr::distinct() |> 
-      dplyr::pull(name)
-    
-    
-    # Run maxent for this species
-    maxent_results = run_maxent(
-      species = the_sp_occ, 
-      predictor_data = predictor_data[[vars_for_this_species]],
-      onedrive_path = onedrive_wd,
-      number_pseudoabsences = 10000,
-      output_folder = output_folder
-    )
+  if(nrow(the_sp_occ) == 0){
+    print("No occurrence records for this species in BC, according to our sources. Skipping MaxEnt run...")
   } else {
-    print(paste0("No need to rerun maxent for ",the_sp,", as the species occurrences have not changed and 3 months have not yet elapsed since the model was last run."))
+    # Do we have a MaxEnt results folder for this species yet? If not, create it.
+    if(!dir.exists(paste0(output_folder,the_sp_snake))){
+      past_expiration_date = TRUE
+      new_occurrences = TRUE
+    } else {
+      # Look to see if this species needs maxent rerun - either because it has new occurrences
+      # or because its last run was more than 2 months prior.
+      maxent_metadata = read.csv(file = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/",the_sp_snake,"/MaxEnt_model_run_metadata.csv"))
+      
+      # Two tests of whether we should rerun maxent or not:
+      # 1. Have 3 months elapsed since we last ran this species?
+      past_expiration_date = lubridate::ymd(Sys.Date()) > lubridate::ymd(maxent_metadata$run_date) + lubridate::days(90)
+      # 2. Have any additional occurrences been added within BC?
+      new_occurrences = nrow(the_sp_occ) > maxent_metadata$number_occurrences
+    }
+    if(past_expiration_date | new_occurrences){
+      
+      print(paste0("Rerunning maxent for ",the_sp))
+      
+      vars_for_this_species = predictor_var_matrix |> 
+        dplyr::filter(name == the_sp) |> 
+        dplyr::rename(species = name) |> 
+        tidyr::pivot_longer(-species) |> 
+        dplyr::filter(value) |> 
+        dplyr::select(name) |> 
+        dplyr::distinct() |> 
+        dplyr::pull(name)
+      
+      
+      # Run maxent for this species
+      tryCatch(
+        expr = run_maxent(
+          species = the_sp_occ, 
+          predictor_data = predictor_data[[vars_for_this_species]],
+          onedrive_path = onedrive_wd,
+          number_pseudoabsences = 10000,
+          output_folder = output_folder
+        ),
+        error = function(e) NULL
+      )
+    } else {
+      print(paste0("No need to rerun maxent for ",the_sp,", as the species occurrences have not changed and 3 months have not yet elapsed since the model was last run."))
+    }
   }
 }

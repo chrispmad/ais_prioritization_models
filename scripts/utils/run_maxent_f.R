@@ -266,7 +266,7 @@ run_maxent = function(species,
   
   file.copy(from = maxent_html, to = paste0(output_fn,"MaxEnt_results.html"))
   write.csv(key_metrics, paste0(output_fn,"MaxEnt_key_metrics.csv"), row.names = F)
-  write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv", row.names = F))
+  write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv"), row.names = F)
   write.csv(file_version_csv, paste0(output_fn,"MaxEnt_model_run_metadata.csv"), row.names = F)
   terra::writeRaster(predictions, paste0(output_fn,"MaxEnt_prediction_raster.tif"))
   terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
