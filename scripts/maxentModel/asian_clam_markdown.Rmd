@@ -67,8 +67,7 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      extentvect)
 
 predictor_data <- predictor_data[[c("pH", "calc","population_density", "elev",
-                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity", 
-                                    "temp_Summer", "temp_Winter", "Water_Temperature", "slope")]]
+                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity",                                     "temp_Summer", "temp_Winter", "Water_Temperature", "slope")]]
 
 sppDF = bcinvadeR::grab_aq_occ_data(sppOI)
 
