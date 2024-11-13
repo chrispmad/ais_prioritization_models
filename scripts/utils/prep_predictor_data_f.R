@@ -27,7 +27,7 @@ prep_predictor_data = function(proj_path,
   # Pull in DFO 2023 Angler Survey data - Sum of Days Fished
   days_fished = terra::rast(paste0(onedrive_path,"CNF/DFO_angling_survey_days_fished_raster.tif"))
   
-  
+  slope_bc<- terra::rast(paste0(onedrive_path,"CNF/slope_bc.tif"))
   
   # Pull in stream order (of streams with stream order 3+), 2km resolution.
   # stream_ord = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif"))
@@ -158,9 +158,9 @@ prep_predictor_data = function(proj_path,
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
                  ph_NAM,Calc_NAM,roads,elev,pop_dens,
-                 boat_dests,days_fished)
+                 boat_dests,days_fished, slope_bc)
   names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
-                    "popn_density", "boats_destination", "days_fished")
+                    "popn_density", "boats_destination", "days_fished", "slope")
   rasters = append(rasters, interpolated_rasts)
   rasters<- append(rasters, interpolated_rasts_limits)
   rasters<- append(rasters, seasonTemps)
