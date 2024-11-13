@@ -142,17 +142,11 @@ prep_predictor_data = function(proj_path,
   
   rasters = list(cmidata$Annual_Mean_Temperature,
                  cmidata$Annual_Precipitation,
-<<<<<<< HEAD
+
                  ph_NAM,Calc_NAM,roads,elev,pop_dens,
                  boat_dests,days_fished, slope_bc)
   names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
                     "popn_density", "boats_destination", "days_fished", "slope")
-=======
-                 ph_NAM,Calc_NAM,roads,elev,slope,pop_dens,
-                 boat_dests,days_fished)
-  names(rasters)<-c("Annual Mean Temperature", "Precipitation", "pH", "Calcium", "roads", "elevation",
-                    "slope", "popn_density", "boats_destination", "days_fished")
->>>>>>> 30b5474226cc55825680422f777a00404cba407c
   rasters = append(rasters, interpolated_rasts)
   rasters<- append(rasters, interpolated_rasts_limits)
   rasters<- append(rasters, seasonTemps)
