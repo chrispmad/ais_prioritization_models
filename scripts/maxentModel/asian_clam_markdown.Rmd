@@ -68,7 +68,7 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
 
 predictor_data <- predictor_data[[c("pH", "calc","population_density", "elev",
                                     "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity", 
-                                    "temp_Summer", "temp_Winter", "Water_Temperature")]]
+                                    "temp_Summer", "temp_Winter", "Water_Temperature", "slope")]]
 
 sppDF = bcinvadeR::grab_aq_occ_data(sppOI)
 
@@ -96,7 +96,7 @@ predictor_data$days_fished<-subst(predictor_data$days_fished, NA, 0)
 watercourses<-crop(watercourses, extentvect)
 watercourses<-mask(watercourses, extentvect)
 
-
+plot(watercourses)
 ```
 
 ## Data Exploration
@@ -113,6 +113,8 @@ for(raster_var in unique(names(predictor_data))){
 }
 
 r_stack<-raster::stack(predictor_data)
+
+
 
 datDT<-setDT(dat)
 
@@ -277,6 +279,62 @@ bg.z <- bg.z |> st_drop_geometry()
  #                    categoricals = NULL, bb.buf = 7)
 
 ```
+
+
+### Presences vs background predictors
+
+Data from the predictors were extracted at the presences and background points for the species. The values are dsiplated in a boxplot to examine what differences there may be between the two data for each predictor selected. 
+
+```{r boxplot_bg_pres}
+
+pres_box <- occs.z
+pres_box$pres<-1
+bg_box <- bg.z
+bg_box$pres <- 0
+
+tot_box <-rbind(pres_box, bg_box)
+tot_box$index<- 1:nrow(tot_box)
+tot_box<-setDT(tot_box)
+melt_box<-melt(tot_box, id.vars = c("pres", "index"), measure.vars = c(1:(ncol(tot_box)-2)))
+
+
+levels(melt_box$variable) <- c(
+  "pH" = "pH",
+  "calc" = "Calcium",
+  "population_density" = "Population Density",
+  "elev" = "Elevation",
+  "TotalInspections" = "Total Inspections",
+  "days_fished" = "Days Fished",
+  "Carbon_Dissolved_Organic" = "Dissolved Organic Carbon",
+  "Chlorophyll" = "Chlorophyll",
+  "Conductivity" = "Conductivity",
+  "Oxygen_Dissolved" = "Dissolved Oxygen",
+  "Turbidity" = "Turbidity",
+  "temp_Summer" = "Summer Temperature",
+  "temp_Winter" = "Winter Temperature",
+  "Water_Temperature" = "Water Temperature",
+  "pres" = "Pressure"
+)
+melt_box$pres <- factor(melt_box$pres, levels = c(0, 1), labels = c("Absent", "Present"))
+
+
+ggplot(melt_box, aes(x = as.factor(pres), y = value, fill = variable)) +
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free_y") +
+  labs(title = "Boxplot of Values by Variable") +
+  ylab("Value")+
+  theme_minimal()+
+  theme(
+    strip.text = element_text(size = 12, face = "bold"), 
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold")
+  )
+
+```
+
+
+
 
 ```{r run_model}
 
