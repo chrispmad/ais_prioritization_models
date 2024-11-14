@@ -56,7 +56,7 @@ run_maxent = function(species,
   # for aquatic organisms.
   watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
   
-  spatial_extent_resampled = terra::resample(predictor_data$dist_to_highways, watercourses)
+  spatial_extent_resampled = terra::resample(predictor_data[[1]], watercourses)
   # Crop and mask the watercourses raster to fit our spatial extent.
   watercourses = terra::mask(terra::crop(watercourses, spatial_extent_resampled),spatial_extent_resampled)
   
@@ -163,16 +163,23 @@ run_maxent = function(species,
                                 extf = 0.9) %>% 
     as.data.frame()
   
-  browser()
+  
+  
+  presencedat<- dat |> 
+    dplyr::select(x, y, Species, geometry)
   
   for(raster_var in unique(names(predictor_data))){
-    dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
-                                        dat[,c("x","y")], ID = FALSE)[[raster_var]]
+    presencedat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                                presencedat[,c("x","y")], ID = FALSE)[[raster_var]]
   }
   
-  presData<-dat[, 10:ncol(dat)]
+  presData<-presencedat[, 5:ncol(presencedat)]
   presData$presence <- 1
   pseudoDat<-pseudoabsences
+  pseudoDat$fill<-0
+  pseudoDat$long<-pseudoDat$x
+  pseudoDat$lat<-pseudoDat$y
+  pseudoDat<-st_as_sf(pseudoDat, coords = (c("long", "lat")), crs = 4326)
   #not getting variables - why?
   for(raster_var in unique(names(predictor_data))){
     pseudoDat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
@@ -180,8 +187,10 @@ run_maxent = function(species,
   }
   
   
-  pDat<-pseudoDat[, 3:ncol(pseudoDat)]
+  pDat<-pseudoDat[, 5:ncol(pseudoDat)]
   pDat$presence<-0
+  pDat <- pDat |> st_drop_geometry()
+  presData <- presData |> st_drop_geometry()
   
   tot_box <-rbind(presData, pDat)
   tot_box$index<- 1:nrow(tot_box)
@@ -211,7 +220,7 @@ run_maxent = function(species,
   predictor_box<-ggplot(melt_box, aes(x = as.factor(presence), y = value, fill = variable)) +
     geom_boxplot() +
     facet_wrap(~ variable, scales = "free_y") +
-    labs(title = "Absence and presence by Predictor") +
+    labs(title = "Absence and Presence by Predictor") +
     ylab("")+
     xlab("")+
     theme_minimal()+
@@ -229,20 +238,47 @@ run_maxent = function(species,
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
   sink(paste0(output_fn,"MaxEnt_console_output.txt"))
+  
+  # output<-capture.output(tryCatch({
+  # },
+  #   me = ENMevaluate(occs = presences, 
+  #                    envs = predictor_data_low_cor, 
+  #                    bg = pseudoabsences, 
+  #                    algorithm = 'maxent.jar', 
+  #                    partitions = 'block', 
+  #                    tune.args = list(fc = feature_classes, 
+  #                                     rm = regularisation_levels))
+  # ))
+  # writeLines(output, paste0(output_fn,"MaxEnt_console_output.txt"))
   # John and I followed this website as a guide: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html#eval
   # Consult if necessary!
   # ENMeval method of running maxent. Great because this includes lots of 
   # parameter tests etc. inside the function call.
-  me = ENMevaluate(occs = presences, 
-                   envs = predictor_data_low_cor, 
-                   bg = pseudoabsences, 
-                   algorithm = 'maxent.jar', 
-                   partitions = 'block', 
-                   tune.args = list(fc = feature_classes, 
+  me = ENMevaluate(occs = presences,
+                   envs = predictor_data_low_cor,
+                   bg = pseudoabsences,
+                   algorithm = 'maxent.jar',
+                   partitions = 'block',
+                   tune.args = list(fc = feature_classes,
                                     rm = regularisation_levels))
+  
+  
   sink()
+  
+  top5 <- me@results |> 
+    filter(!is.na(AICc)) |> 
+    arrange(AICc, delta.AICc, desc(w.AIC)) |> 
+    slice_head(n = 5)
+  top5
+  write.table(top5, paste0(output_fn, "top_5_models.txt"), row.names = F)
+  topfc<-as.character(top5[1,]$fc)
+  toprm<-as.character(top5[1,]$rm)
+  
+  opt.aicc<- eval.results(me) |> 
+    dplyr::filter(fc == topfc & rm == toprm)
+  
   # Find which model had the lowest AIC; we'll use this for now.
-  opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+  # opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
   
   var_importance = me@variable.importance[[opt.aicc$tune.args]]
   
@@ -293,6 +329,7 @@ run_maxent = function(species,
   
   # Calculate some values to use as labels and captions in the figure.
   train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
+  maxent_results<-as.data.frame(maxent_results)
   train_auc = maxent_results$auc.train
   
   metrics_caption = var_importance |> 
@@ -304,25 +341,31 @@ run_maxent = function(species,
     dplyr::ungroup() |>
     dplyr::summarise(paste0(v, collapse = '<br>'))
   
-  predictions_plot = ggplot() + 
-    tidyterra::geom_spatraster(data = predictions) + 
-    geom_sf(data = points_sf, aes(col = type, alpha = type)) +
-    scale_colour_manual(values = c('presence' = "red",
-                                   'pseudoabsence' = "purple")) +
-    scale_alpha_manual(values = c('presence' = 1,
-                                  'pseudoabsence' = 0.1),
-                       guide = 'none') +
-    scale_fill_viridis_c() + 
+  predictions_plot = ggplot() +
+    tidyterra::geom_spatraster(data = predictions) +
+    geom_sf(data = points_sf, aes(col = type, alpha = type, shape = type)) +
+    scale_colour_manual(values = c('presence' = "red", 'pseudoabsence' = "purple")) +
+    scale_alpha_manual(values = c('presence' = 1, 'pseudoabsence' = 0.4), guide = 'none') +
+    scale_shape_manual(values = c('presence' = 19, 'pseudoabsence' = 4)) +  
+    scale_fill_viridis_c() +
     labs(title = paste0(stringr::str_to_title(species_name)),
          subtitle = paste0("Number of Training Data Points: ",train_samp,
                            "<br>Training Area-Under-Curve: ",round(as.numeric(train_auc),4)),
          caption = metrics_caption,
          fill = "Predicted \nRelative \nSuitability",
-         color = "Sample Type") + 
+         color = "Sample Type",
+         shape = "Sample Type") +  # Add shape to the legend
     theme(
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
     )
+  predictions_plot
+  
+  predictions_plot_blank <- ggplot() +
+    tidyterra::geom_spatraster(data = predictions) +
+    scale_fill_viridis_c(option = "D", na.value = NA)+
+    labs(fill = paste0("Habitat suitability: \n",dat$Species[1]))+
+    theme_minimal()
   
   # Predicted habitat vs. not habitat plot, using 
   # whichever threshold approach selected in function call.
@@ -357,7 +400,7 @@ run_maxent = function(species,
   } else {
     old_files <- list.files(path = output_fn, full.names = TRUE)
     old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
-    old_files_to_remove <- old_files_to_remove[!grepl("\\.txt$", old_files_to_remove)]
+    old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
     old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
     
     if (length(old_files_to_remove) > 0) {
@@ -380,6 +423,9 @@ run_maxent = function(species,
   terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
                   plot = predictions_plot,
+                  dpi = 300, width = 8, height = 8)
+  ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot_no_occ.png"),
+                  plot = predictions_plot_blank,
                   dpi = 300, width = 8, height = 8)
 
   cat("\nFiles written to output folder...\n")
