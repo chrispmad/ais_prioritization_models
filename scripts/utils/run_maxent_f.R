@@ -38,6 +38,8 @@ run_maxent = function(species,
       dat = sf::st_drop_geometry(dat)
     }
   }
+  # Check for output folder; if it exists already, delete contents.
+  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
   
   if(is.null(predictor_data)){
     stop("No predictor data entered; please supply at least one {terra} spatRaster.")
@@ -73,6 +75,43 @@ run_maxent = function(species,
   
   dat_just_pred_vars = sf::st_drop_geometry(dat[,c(names(predictor_data))])
   
+  
+  
+  
+  cor<-raster.cor.matrix(predictor_data)
+  thresh<-0.6
+  
+  dists<-as.dist(1-abs(cor))
+  clust <- hclust(dists, method = "single")
+  groups <- cutree(clust, h = 1 - thresh)
+  jpeg(paste0(output_fn,"cluterDendogram.jpg"), width = 1200, height = 800)
+  ## Visualize groups:
+  plot(clust, hang = -1)
+  rect.hclust(clust, h = 1 - thresh)
+  dev.off()
+  
+  
+  unique_groups <- unique(groups)
+  selected_predictors <- sapply(unique_groups, function(group_num) {
+    group_indices <- which(groups == group_num)
+    return(names(groups)[group_indices[1]])
+  })
+  predictor_data_full<-predictor_data
+  predictor_data<-predictor_data_full[[selected_predictors]]
+  
+  cor<-raster.cor.matrix(predictor_data)
+  thresh<-0.5
+  dists<-as.dist(1-abs(cor))
+  clust <- hclust(dists, method = "single")
+  groups <- cutree(clust, h = 1 - thresh)
+  jpeg(paste0(output_fn,"cluterDendogram_reduced.jpg"), width = 1200, height = 800)
+  ## Visualize groups:
+  plot(clust, hang = -1)
+  rect.hclust(clust, h = 1 - thresh)
+  dev.off()
+  
+  
+  
   # Remove samples lacking predictor raster values?
   keep_ind = complete.cases(dat_just_pred_vars)
   dat = dat[keep_ind,]
@@ -88,30 +127,31 @@ run_maxent = function(species,
   cor_res = cor(dat_just_pred_vars |> dplyr::select(dplyr::where(is.numeric))) |>
    as.data.frame()
   
-  # Pull out highly correlated variables.
-  highly_correlated_vars = cor_res |>   
-    tidyr::as_tibble() |> 
-    dplyr::mutate(var_2  = row.names(cor_res)) |> 
-    # Gather table long so we have a column for each of the two-variable comparisons
-    tidyr::pivot_longer(cols = -c(var_2)) |> 
-    # Drop rows where a variable was being compared with itself
-    dplyr::filter(var_2 != name) |> 
-    # Filter by some arbitrary cut-off - what is 'too' correlated??
-    dplyr::filter(abs(value) >= 0.8) |> 
-    # Switch into 'rowwise' mode - this is like looping by row.
-    dplyr::rowwise() |> 
-    # Make a column that lists which two variables are being compared, 
-    # sorted alphabetically.
-    dplyr::mutate(variable_combo = list(c(var_2, name))) |>
-    dplyr::mutate(variable_combo = paste0(variable_combo[order(variable_combo)], collapse = '-')) |> 
-    # Exit 'rowwise' mode with an ungroup()
-    dplyr::ungroup() |> 
-    # Filter using that alphabetical var name column; this prevents duplication of results.
-    dplyr::filter(duplicated(variable_combo))
+  # # Pull out highly correlated variables.
+  # highly_correlated_vars = cor_res |>   
+  #   tidyr::as_tibble() |> 
+  #   dplyr::mutate(var_2  = row.names(cor_res)) |> 
+  #   # Gather table long so we have a column for each of the two-variable comparisons
+  #   tidyr::pivot_longer(cols = -c(var_2)) |> 
+  #   # Drop rows where a variable was being compared with itself
+  #   dplyr::filter(var_2 != name) |> 
+  #   # Filter by some arbitrary cut-off - what is 'too' correlated??
+  #   dplyr::filter(abs(value) >= 0.8) |> 
+  #   # Switch into 'rowwise' mode - this is like looping by row.
+  #   dplyr::rowwise() |> 
+  #   # Make a column that lists which two variables are being compared, 
+  #   # sorted alphabetically.
+  #   dplyr::mutate(variable_combo = list(c(var_2, name))) |>
+  #   dplyr::mutate(variable_combo = paste0(variable_combo[order(variable_combo)], collapse = '-')) |> 
+  #   # Exit 'rowwise' mode with an ungroup()
+  #   dplyr::ungroup() |> 
+  #   # Filter using that alphabetical var name column; this prevents duplication of results.
+  #   dplyr::filter(duplicated(variable_combo))
+  # 
+  # # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
+  # predictor_data_low_cor = predictor_data
   
-  # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
   predictor_data_low_cor = predictor_data
-  
   # Pull out x and y coordinates for presences
   presences = sf::st_drop_geometry(dat[,c('x','y')])
   
@@ -123,9 +163,72 @@ run_maxent = function(species,
                                 extf = 0.9) %>% 
     as.data.frame()
   
+  browser()
+  
+  for(raster_var in unique(names(predictor_data))){
+    dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                        dat[,c("x","y")], ID = FALSE)[[raster_var]]
+  }
+  
+  presData<-dat[, 10:ncol(dat)]
+  presData$presence <- 1
+  pseudoDat<-pseudoabsences
+  #not getting variables - why?
+  for(raster_var in unique(names(predictor_data))){
+    pseudoDat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                              pseudoDat[,c("x","y")], ID = FALSE)[[raster_var]]
+  }
+  
+  
+  pDat<-pseudoDat[, 3:ncol(pseudoDat)]
+  pDat$presence<-0
+  
+  tot_box <-rbind(presData, pDat)
+  tot_box$index<- 1:nrow(tot_box)
+  tot_box<-setDT(tot_box)
+  melt_box<-melt(tot_box, id.vars = c("presence", "index"), measure.vars = c(1:(ncol(tot_box)-2)))
+  
+  # levels(melt_box$variable) <- c(
+  #   "pH" = "pH",
+  #   "calc" = "Calcium",
+  #   "population_density" = "Population Density",
+  #   "elev" = "Elevation",
+  #   "TotalInspections" = "Total Inspections",
+  #   "days_fished" = "Days Fished",
+  #   "Carbon_Dissolved_Organic" = "Dissolved Organic Carbon",
+  #   "Chlorophyll" = "Chlorophyll",
+  #   "Conductivity" = "Conductivity",
+  #   "Oxygen_Dissolved" = "Dissolved Oxygen",
+  #   "Turbidity" = "Turbidity",
+  #   "temp_Summer" = "Summer Temperature",
+  #   "temp_Winter" = "Winter Temperature",
+  #   "Water_Temperature" = "Water Temperature",
+  #   "pres" = "Pressure",
+  #   "slope" = "slope"
+  # )
+  melt_box$presence <- factor(melt_box$presence, levels = c(1, 0), labels = c("Present", "Absence"))
+  
+  predictor_box<-ggplot(melt_box, aes(x = as.factor(presence), y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_wrap(~ variable, scales = "free_y") +
+    labs(title = "Absence and presence by Predictor") +
+    ylab("")+
+    xlab("")+
+    theme_minimal()+
+    theme(
+      strip.text = element_text(size = 12, face = "bold"), 
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+      axis.title = element_text(size = 14, face = "bold"),
+      axis.text.x = element_text(angle = 90, hjust = 1, face = "bold")
+    )
+  ggplot2::ggsave(filename = paste0(output_fn,"pres_bg_boxplot.png"),
+                  plot = predictor_box,
+                  dpi = 300, width = 8, height = 8)
+  
+  
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
-
+  sink(paste0(output_fn,"MaxEnt_console_output.txt"))
   # John and I followed this website as a guide: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html#eval
   # Consult if necessary!
   # ENMeval method of running maxent. Great because this includes lots of 
@@ -137,7 +240,7 @@ run_maxent = function(species,
                    partitions = 'block', 
                    tune.args = list(fc = feature_classes, 
                                     rm = regularisation_levels))
-  
+  sink()
   # Find which model had the lowest AIC; we'll use this for now.
   opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
   
@@ -247,16 +350,20 @@ run_maxent = function(species,
       terra::vect()
   )
   
-  # Check for output folder; if it exists already, delete contents.
-  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
   
-  if(!dir.exists(output_fn)){
+  
+  if (!dir.exists(output_fn)) {
     dir.create(output_fn)
   } else {
-    old_files = list.files(path = output_fn, full.names = T)
-    cat("\nDeleting old contents of results folder...\n")
-    old_files |> 
-      lapply(\(x) file.remove(x))
+    old_files <- list.files(path = output_fn, full.names = TRUE)
+    old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
+    old_files_to_remove <- old_files_to_remove[!grepl("\\.txt$", old_files_to_remove)]
+    old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
+    
+    if (length(old_files_to_remove) > 0) {
+      cat("\nDeleting old contents of results folder...\n")
+      file.remove(old_files_to_remove)
+    }
   }
   
   file_version_csv = data.frame(
@@ -264,6 +371,7 @@ run_maxent = function(species,
     number_occurrences = number_occurrences_at_outset
   )
   
+  # save to standalone file - to local file, then copy to lan
   file.copy(from = maxent_html, to = paste0(output_fn,"MaxEnt_results.html"))
   write.csv(key_metrics, paste0(output_fn,"MaxEnt_key_metrics.csv"), row.names = F)
   write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv"), row.names = F)
