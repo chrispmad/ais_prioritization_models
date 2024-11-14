@@ -27,7 +27,7 @@ library(data.table)
 library(here)
 
 sppOI<-"asian clam"
-regularisation_levels = c(1:5); feature_classes = c("L","LQ","LQH"); number_pseudoabsences<-1000
+regularisation_levels = c(1:5); feature_classes = c("L","LQ","LQH", "LQHPT"); number_pseudoabsences<-1000
 # The number of background points to be gnerated
 number_pseudoabsences<-10000
 
@@ -337,22 +337,22 @@ ggplot(melt_box, aes(x = as.factor(pres), y = value, fill = variable)) +
 
 ```{r run_model}
 
-# me = ENMevaluate(occs = pres_xy, 
-#                  envs = predictor_data, 
-#                  bg = pseudoabsences, 
-#                  algorithm = 'maxent.jar', 
-#                  partitions = 'block', 
-#                  tune.args = list(fc = feature_classes, 
-#                                   rm = regularisation_levels))
-# me@results
+me = ENMevaluate(occs = pres_xy,
+                 envs = predictor_data,
+                 bg = pseudoabsences,
+                 algorithm = 'maxent.jar',
+                 partitions = 'block',
+                 tune.args = list(fc = feature_classes,
+                                  rm = regularisation_levels))
+me@results
 
-lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
-proj_wd = getwd()
-onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
-
-output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
-
-run_maxent(species = sppDF, predictor_data = predictor_data, onedrive_path =  onedrive_wd, number_pseudoabsences = 10000, output_folder = output_folder)
+# lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
+# proj_wd = getwd()
+# onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+# 
+# output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
+# 
+# run_maxent(species = sppDF, predictor_data = predictor_data, onedrive_path =  onedrive_wd, number_pseudoabsences = 10000, output_folder = output_folder)
 
 ```
 
@@ -436,14 +436,14 @@ model1_l = ENMevaluate(occs = pres_xy,
                                   rm = 2))
 model1_l
 
-model1_lq = ENMevaluate(occs = pres_xy, 
+model1_l3 = ENMevaluate(occs = pres_xy, 
                  envs = predictor_data, 
                  bg = pseudoabsences, 
                  algorithm = 'maxent.jar', 
                  partitions = 'block', 
-                 tune.args = list(fc = "LQ", 
-                                  rm = 1))
-model1_lq
+                 tune.args = list(fc = "L", 
+                                  rm = 3))
+model1_l3
 
 
 ```
@@ -456,7 +456,7 @@ model1_l@variable.importance$fc.L_rm.2 |>
   #filter(percent.contribution > 0.0000000001) |> 
   arrange(desc(percent.contribution))
 
-model1_lq@variable.importance$fc.LQ_rm.1 |> 
+model1_l3@variable.importance$fc.L_rm.3 |> 
   mutate(percent.contribution = as.numeric(percent.contribution)) |> 
   #filter(percent.contribution > 0.0000000001) |> 
   arrange(desc(percent.contribution))
