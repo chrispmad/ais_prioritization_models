@@ -38,6 +38,8 @@ run_maxent = function(species,
       dat = sf::st_drop_geometry(dat)
     }
   }
+  # Check for output folder; if it exists already, delete contents.
+  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
   
   if(is.null(predictor_data)){
     stop("No predictor data entered; please supply at least one {terra} spatRaster.")
@@ -54,7 +56,7 @@ run_maxent = function(species,
   # for aquatic organisms.
   watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
   
-  spatial_extent_resampled = terra::resample(predictor_data$dist_to_highways, watercourses)
+  spatial_extent_resampled = terra::resample(predictor_data[[1]], watercourses)
   # Crop and mask the watercourses raster to fit our spatial extent.
   watercourses = terra::mask(terra::crop(watercourses, spatial_extent_resampled),spatial_extent_resampled)
   
@@ -73,6 +75,43 @@ run_maxent = function(species,
   
   dat_just_pred_vars = sf::st_drop_geometry(dat[,c(names(predictor_data))])
   
+  
+  
+  
+  cor<-raster.cor.matrix(predictor_data)
+  thresh<-0.6
+  
+  dists<-as.dist(1-abs(cor))
+  clust <- hclust(dists, method = "single")
+  groups <- cutree(clust, h = 1 - thresh)
+  jpeg(paste0(output_fn,"cluterDendogram.jpg"), width = 1200, height = 800)
+  ## Visualize groups:
+  plot(clust, hang = -1)
+  rect.hclust(clust, h = 1 - thresh)
+  dev.off()
+  
+  
+  unique_groups <- unique(groups)
+  selected_predictors <- sapply(unique_groups, function(group_num) {
+    group_indices <- which(groups == group_num)
+    return(names(groups)[group_indices[1]])
+  })
+  predictor_data_full<-predictor_data
+  predictor_data<-predictor_data_full[[selected_predictors]]
+  
+  cor<-raster.cor.matrix(predictor_data)
+  thresh<-0.5
+  dists<-as.dist(1-abs(cor))
+  clust <- hclust(dists, method = "single")
+  groups <- cutree(clust, h = 1 - thresh)
+  jpeg(paste0(output_fn,"cluterDendogram_reduced.jpg"), width = 1200, height = 800)
+  ## Visualize groups:
+  plot(clust, hang = -1)
+  rect.hclust(clust, h = 1 - thresh)
+  dev.off()
+  
+  
+  
   # Remove samples lacking predictor raster values?
   keep_ind = complete.cases(dat_just_pred_vars)
   dat = dat[keep_ind,]
@@ -88,30 +127,31 @@ run_maxent = function(species,
   cor_res = cor(dat_just_pred_vars |> dplyr::select(dplyr::where(is.numeric))) |>
    as.data.frame()
   
-  # Pull out highly correlated variables.
-  highly_correlated_vars = cor_res |>   
-    tidyr::as_tibble() |> 
-    dplyr::mutate(var_2  = row.names(cor_res)) |> 
-    # Gather table long so we have a column for each of the two-variable comparisons
-    tidyr::pivot_longer(cols = -c(var_2)) |> 
-    # Drop rows where a variable was being compared with itself
-    dplyr::filter(var_2 != name) |> 
-    # Filter by some arbitrary cut-off - what is 'too' correlated??
-    dplyr::filter(abs(value) >= 0.8) |> 
-    # Switch into 'rowwise' mode - this is like looping by row.
-    dplyr::rowwise() |> 
-    # Make a column that lists which two variables are being compared, 
-    # sorted alphabetically.
-    dplyr::mutate(variable_combo = list(c(var_2, name))) |>
-    dplyr::mutate(variable_combo = paste0(variable_combo[order(variable_combo)], collapse = '-')) |> 
-    # Exit 'rowwise' mode with an ungroup()
-    dplyr::ungroup() |> 
-    # Filter using that alphabetical var name column; this prevents duplication of results.
-    dplyr::filter(duplicated(variable_combo))
+  # # Pull out highly correlated variables.
+  # highly_correlated_vars = cor_res |>   
+  #   tidyr::as_tibble() |> 
+  #   dplyr::mutate(var_2  = row.names(cor_res)) |> 
+  #   # Gather table long so we have a column for each of the two-variable comparisons
+  #   tidyr::pivot_longer(cols = -c(var_2)) |> 
+  #   # Drop rows where a variable was being compared with itself
+  #   dplyr::filter(var_2 != name) |> 
+  #   # Filter by some arbitrary cut-off - what is 'too' correlated??
+  #   dplyr::filter(abs(value) >= 0.8) |> 
+  #   # Switch into 'rowwise' mode - this is like looping by row.
+  #   dplyr::rowwise() |> 
+  #   # Make a column that lists which two variables are being compared, 
+  #   # sorted alphabetically.
+  #   dplyr::mutate(variable_combo = list(c(var_2, name))) |>
+  #   dplyr::mutate(variable_combo = paste0(variable_combo[order(variable_combo)], collapse = '-')) |> 
+  #   # Exit 'rowwise' mode with an ungroup()
+  #   dplyr::ungroup() |> 
+  #   # Filter using that alphabetical var name column; this prevents duplication of results.
+  #   dplyr::filter(duplicated(variable_combo))
+  # 
+  # # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
+  # predictor_data_low_cor = predictor_data
   
-  # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
   predictor_data_low_cor = predictor_data
-  
   # Pull out x and y coordinates for presences
   presences = sf::st_drop_geometry(dat[,c('x','y')])
   
@@ -123,23 +163,122 @@ run_maxent = function(species,
                                 extf = 0.9) %>% 
     as.data.frame()
   
+  
+  
+  presencedat<- dat |> 
+    dplyr::select(x, y, Species, geometry)
+  
+  for(raster_var in unique(names(predictor_data))){
+    presencedat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                                presencedat[,c("x","y")], ID = FALSE)[[raster_var]]
+  }
+  
+  presData<-presencedat[, 5:ncol(presencedat)]
+  presData$presence <- 1
+  pseudoDat<-pseudoabsences
+  pseudoDat$fill<-0
+  pseudoDat$long<-pseudoDat$x
+  pseudoDat$lat<-pseudoDat$y
+  pseudoDat<-st_as_sf(pseudoDat, coords = (c("long", "lat")), crs = 4326)
+  #not getting variables - why?
+  for(raster_var in unique(names(predictor_data))){
+    pseudoDat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
+                                              pseudoDat[,c("x","y")], ID = FALSE)[[raster_var]]
+  }
+  
+  
+  pDat<-pseudoDat[, 5:ncol(pseudoDat)]
+  pDat$presence<-0
+  pDat <- pDat |> st_drop_geometry()
+  presData <- presData |> st_drop_geometry()
+  
+  tot_box <-rbind(presData, pDat)
+  tot_box$index<- 1:nrow(tot_box)
+  tot_box<-setDT(tot_box)
+  melt_box<-melt(tot_box, id.vars = c("presence", "index"), measure.vars = c(1:(ncol(tot_box)-2)))
+  
+  # levels(melt_box$variable) <- c(
+  #   "pH" = "pH",
+  #   "calc" = "Calcium",
+  #   "population_density" = "Population Density",
+  #   "elev" = "Elevation",
+  #   "TotalInspections" = "Total Inspections",
+  #   "days_fished" = "Days Fished",
+  #   "Carbon_Dissolved_Organic" = "Dissolved Organic Carbon",
+  #   "Chlorophyll" = "Chlorophyll",
+  #   "Conductivity" = "Conductivity",
+  #   "Oxygen_Dissolved" = "Dissolved Oxygen",
+  #   "Turbidity" = "Turbidity",
+  #   "temp_Summer" = "Summer Temperature",
+  #   "temp_Winter" = "Winter Temperature",
+  #   "Water_Temperature" = "Water Temperature",
+  #   "pres" = "Pressure",
+  #   "slope" = "slope"
+  # )
+  melt_box$presence <- factor(melt_box$presence, levels = c(1, 0), labels = c("Present", "Absence"))
+  
+  predictor_box<-ggplot(melt_box, aes(x = as.factor(presence), y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_wrap(~ variable, scales = "free_y") +
+    labs(title = "Absence and Presence by Predictor") +
+    ylab("")+
+    xlab("")+
+    theme_minimal()+
+    theme(
+      strip.text = element_text(size = 12, face = "bold"), 
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+      axis.title = element_text(size = 14, face = "bold"),
+      axis.text.x = element_text(angle = 90, hjust = 1, face = "bold")
+    )
+  ggplot2::ggsave(filename = paste0(output_fn,"pres_bg_boxplot.png"),
+                  plot = predictor_box,
+                  dpi = 300, width = 8, height = 8)
+  
+  
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
-
+  sink(paste0(output_fn,"MaxEnt_console_output.txt"))
+  
+  # output<-capture.output(tryCatch({
+  # },
+  #   me = ENMevaluate(occs = presences, 
+  #                    envs = predictor_data_low_cor, 
+  #                    bg = pseudoabsences, 
+  #                    algorithm = 'maxent.jar', 
+  #                    partitions = 'block', 
+  #                    tune.args = list(fc = feature_classes, 
+  #                                     rm = regularisation_levels))
+  # ))
+  # writeLines(output, paste0(output_fn,"MaxEnt_console_output.txt"))
   # John and I followed this website as a guide: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html#eval
   # Consult if necessary!
   # ENMeval method of running maxent. Great because this includes lots of 
   # parameter tests etc. inside the function call.
-  me = ENMevaluate(occs = presences, 
-                   envs = predictor_data_low_cor, 
-                   bg = pseudoabsences, 
-                   algorithm = 'maxent.jar', 
-                   partitions = 'block', 
-                   tune.args = list(fc = feature_classes, 
+  me = ENMevaluate(occs = presences,
+                   envs = predictor_data_low_cor,
+                   bg = pseudoabsences,
+                   algorithm = 'maxent.jar',
+                   partitions = 'block',
+                   tune.args = list(fc = feature_classes,
                                     rm = regularisation_levels))
   
+  
+  sink()
+  
+  top5 <- me@results |> 
+    filter(!is.na(AICc)) |> 
+    arrange(AICc, delta.AICc, desc(w.AIC)) |> 
+    slice_head(n = 5)
+  top5
+  write.table(top5, paste0(output_fn, "top_5_models.txt"), row.names = F)
+  topfc<-as.character(top5[1,]$fc)
+  toprm<-as.character(top5[1,]$rm)
+  
+  opt.aicc<- eval.results(me) |> 
+    dplyr::filter(fc == topfc & rm == toprm)
+  
   # Find which model had the lowest AIC; we'll use this for now.
-  opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+  # opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
   
   var_importance = me@variable.importance[[opt.aicc$tune.args]]
   
@@ -190,6 +329,7 @@ run_maxent = function(species,
   
   # Calculate some values to use as labels and captions in the figure.
   train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
+  maxent_results<-as.data.frame(maxent_results)
   train_auc = maxent_results$auc.train
   
   metrics_caption = var_importance |> 
@@ -201,25 +341,31 @@ run_maxent = function(species,
     dplyr::ungroup() |>
     dplyr::summarise(paste0(v, collapse = '<br>'))
   
-  predictions_plot = ggplot() + 
-    tidyterra::geom_spatraster(data = predictions) + 
-    geom_sf(data = points_sf, aes(col = type, alpha = type)) +
-    scale_colour_manual(values = c('presence' = "red",
-                                   'pseudoabsence' = "purple")) +
-    scale_alpha_manual(values = c('presence' = 1,
-                                  'pseudoabsence' = 0.1),
-                       guide = 'none') +
-    scale_fill_viridis_c() + 
+  predictions_plot = ggplot() +
+    tidyterra::geom_spatraster(data = predictions) +
+    geom_sf(data = points_sf, aes(col = type, alpha = type, shape = type)) +
+    scale_colour_manual(values = c('presence' = "red", 'pseudoabsence' = "purple")) +
+    scale_alpha_manual(values = c('presence' = 1, 'pseudoabsence' = 0.4), guide = 'none') +
+    scale_shape_manual(values = c('presence' = 19, 'pseudoabsence' = 4)) +  
+    scale_fill_viridis_c() +
     labs(title = paste0(stringr::str_to_title(species_name)),
          subtitle = paste0("Number of Training Data Points: ",train_samp,
                            "<br>Training Area-Under-Curve: ",round(as.numeric(train_auc),4)),
          caption = metrics_caption,
          fill = "Predicted \nRelative \nSuitability",
-         color = "Sample Type") + 
+         color = "Sample Type",
+         shape = "Sample Type") +  # Add shape to the legend
     theme(
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
     )
+  predictions_plot
+  
+  predictions_plot_blank <- ggplot() +
+    tidyterra::geom_spatraster(data = predictions) +
+    scale_fill_viridis_c(option = "D", na.value = NA)+
+    labs(fill = paste0("Habitat suitability: \n",dat$Species[1]))+
+    theme_minimal()
   
   # Predicted habitat vs. not habitat plot, using 
   # whichever threshold approach selected in function call.
@@ -247,16 +393,20 @@ run_maxent = function(species,
       terra::vect()
   )
   
-  # Check for output folder; if it exists already, delete contents.
-  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
   
-  if(!dir.exists(output_fn)){
+  
+  if (!dir.exists(output_fn)) {
     dir.create(output_fn)
   } else {
-    old_files = list.files(path = output_fn, full.names = T)
-    cat("\nDeleting old contents of results folder...\n")
-    old_files |> 
-      lapply(\(x) file.remove(x))
+    old_files <- list.files(path = output_fn, full.names = TRUE)
+    old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
+    old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
+    old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
+    
+    if (length(old_files_to_remove) > 0) {
+      cat("\nDeleting old contents of results folder...\n")
+      file.remove(old_files_to_remove)
+    }
   }
   
   file_version_csv = data.frame(
@@ -264,6 +414,7 @@ run_maxent = function(species,
     number_occurrences = number_occurrences_at_outset
   )
   
+  # save to standalone file - to local file, then copy to lan
   file.copy(from = maxent_html, to = paste0(output_fn,"MaxEnt_results.html"))
   write.csv(key_metrics, paste0(output_fn,"MaxEnt_key_metrics.csv"), row.names = F)
   write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv"), row.names = F)
@@ -272,6 +423,9 @@ run_maxent = function(species,
   terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
                   plot = predictions_plot,
+                  dpi = 300, width = 8, height = 8)
+  ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot_no_occ.png"),
+                  plot = predictions_plot_blank,
                   dpi = 300, width = 8, height = 8)
 
   cat("\nFiles written to output folder...\n")
