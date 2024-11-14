@@ -67,7 +67,7 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      extentvect)
 
 predictor_data <- predictor_data[[c("pH", "calc","population_density", "elev",
-                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity",                                     "temp_Summer", "temp_Winter", "Water_Temperature", "slope")]]
+                                    "TotalInspections", "days_fished", "Carbon_Dissolved_Organic", "Chlorophyll",  "Conductivity", "Oxygen_Dissolved", "Turbidity",                                     "temp_Summer", "temp_Winter", "Water_Temperature", "slope", "dist_to_highways")]]
 
 sppDF = bcinvadeR::grab_aq_occ_data(sppOI)
 
@@ -337,15 +337,22 @@ ggplot(melt_box, aes(x = as.factor(pres), y = value, fill = variable)) +
 
 ```{r run_model}
 
-me = ENMevaluate(occs = pres_xy, 
-                 envs = predictor_data, 
-                 bg = pseudoabsences, 
-                 algorithm = 'maxent.jar', 
-                 partitions = 'block', 
-                 tune.args = list(fc = feature_classes, 
-                                  rm = regularisation_levels))
-me@results
+# me = ENMevaluate(occs = pres_xy, 
+#                  envs = predictor_data, 
+#                  bg = pseudoabsences, 
+#                  algorithm = 'maxent.jar', 
+#                  partitions = 'block', 
+#                  tune.args = list(fc = feature_classes, 
+#                                   rm = regularisation_levels))
+# me@results
 
+lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
+proj_wd = getwd()
+onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
+
+output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
+
+run_maxent(species = sppDF, predictor_data = predictor_data, onedrive_path =  onedrive_wd, number_pseudoabsences = 10000, output_folder = output_folder)
 
 ```
 
