@@ -10,14 +10,11 @@ library(predicts)
 library(ggpubr)
 library(dismo)
 library(rJava)
-#source("ZuurFuncs.R")
+library(patchwork)
 library(ecospat)
-library(ENMeval)
+# library(ENMeval)
 
 # =========================================
-
-# source("scripts/utils/prep_predictor_data_f.R")
-# source("scripts/utils/run_maxent_f.R")
 
 # Get / set file paths
 proj_wd = getwd()
@@ -175,8 +172,10 @@ for(the_wb in wbs_list){
   
   other_ais_in_wb = unique(ais_in_wb$Species)
   
-  for(i in 1:nrow(d[d$Waterbody == the_wb$wb_name,])){
-    other_ais_in_wb = other_ais_in_wb[other_ais_in_wb != d[i,]$Species]
+  d_for_waterbody = d[d$Waterbody == the_wb$wb_name,]
+  
+  for(i in 1:nrow(d_for_waterbody)){
+    other_ais_in_wb = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb)
     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb, collapse = ', ')
   }
@@ -260,20 +259,47 @@ for(i in 1:nrow(d)){
 
 # Snag the predictions_r object from each element of the list.
 d$wb_maxent_suitability = 0
+d$wb_maxent_training_AUC = 0
 
 for(i in 1:nrow(d)){
   
   the_species = d[i,]$Species
   the_species_snake = snakecase::to_snake_case(the_species)
   species_folder = paste0(output_folder,the_species_snake,"/")
+  # Temporary fix for pumpkinseed sunfish... will have to figure this out.
+  species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
   
   # Read maxent results in for species
   the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
 
   # Pull out average values for the waterbody.
   mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'mean', na.rm = T)
+  # Is Median better??
+  mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'median', na.rm = T)
   
   d[i,]$wb_maxent_suitability = round(mean_pred_val[1,2],3)
+  
+  maxent_key_metrics = read.csv(paste0(species_folder,"MaxEnt_key_metrics.csv"))
+  
+  d[i,]$wb_maxent_training_AUC = maxent_key_metrics[maxent_key_metrics$metric == "training_auc",]$value
+  
+  the_wb = wbs[wbs$wb_name == waterbody_name,]
+  
+  backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+  
+  backdrop = ggplot() + 
+    geom_image(aes(x=1,y=1,image = backdrop_path), size = 1.8)
+  
+  the_pred_for_wb_r = terra::crop(the_pred_r, terra::vect(sf::st_buffer(d[i,]$geometry,5000)))
+  
+  inset = ggplot() + 
+    tidyterra::geom_spatraster(data = the_pred_for_wb_r) + 
+    geom_sf(data = d[i,], col = 'red', fill = 'transparent') + 
+    ggthemes::theme_map() + 
+    labs(fill = 'Predicted\nSuitability')
+  
+  backdrop + 
+    patchwork::inset_element(inset, 0, 0, 0, 0)
 }
 
 # First Nations territories within 10 kilometers
@@ -297,10 +323,16 @@ for(i in 1:nrow(d)){
 d_sum = d |> 
   sf::st_drop_geometry() |> 
   rowwise() |> 
-  dplyr::mutate(records_in_wb_b = dplyr::case_when(
-    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.33 ~ 1,
-    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.66 ~ 2,
-    records_in_wb / nrow(occ_species[occ_species$Species == Species,]) > 0.66 ~ 3,
+  # dplyr::mutate(records_in_wb_b = dplyr::case_when(
+  #   records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.33 ~ 1,
+  #   records_in_wb / nrow(occ_species[occ_species$Species == Species,]) <= 0.66 ~ 2,
+  #   records_in_wb / nrow(occ_species[occ_species$Species == Species,]) > 0.66 ~ 3,
+  #   T ~ 0
+  # )) |> 
+  dplyr::mutate(other_ais_in_wb_b = dplyr::case_when(
+    other_ais_in_wb <= 3 ~ 0,
+    other_ais_in_wb <= 6 ~ -1,
+    other_ais_in_wb > 6 ~ -2,
     T ~ 0
   )) |> 
   dplyr::mutate(sara_in_wb_b = dplyr::case_when(
@@ -310,15 +342,21 @@ d_sum = d |>
     sara_in_wb >= 3 ~ 3,
     T ~ 0
   )) |> 
-  dplyr::mutate(m_suit_b = dplyr::case_when(
+  dplyr::mutate(maxent_suitability_b = dplyr::case_when(
     wb_maxent_suitability <= 0.33 ~ 1,
     wb_maxent_suitability <= 0.66 ~ 2,
     wb_maxent_suitability > 0.66 ~ 3,
     T ~ 0
   )) |> 
+  dplyr::mutate(m_suit_uncertainty_b = dplyr::case_when(
+    wb_maxent_training_AUC >= 0.9 ~ 1,
+    wb_maxent_training_AUC >= 0.8 ~ 2,
+    wb_maxent_training_AUC < 0.8 ~ 3,
+    T ~ 0
+  )) |> 
   dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
   ungroup() |> 
-  tidyr::pivot_longer(cols = dplyr::ends_with("_b")) |> 
+  tidyr::pivot_longer(cols = c(dplyr::ends_with("_b"),dplyr::contains("Current"))) |> 
   dplyr::group_by(Region, Species, Waterbody) |> 
   dplyr::mutate(summed_bins = round(sum(value,na.rm=T),0)) |> 
   dplyr::ungroup() |> 
@@ -327,6 +365,37 @@ d_sum = d |>
 # Put the "summed_bins" column at the very right-side of the output table.
 d_sum = d_sum |> 
   dplyr::select(names(d_sum)[names(d_sum) != 'summed_bins'], "summed_bins")
+
+# Modify columns that will be hyperlinks
+for(i in 1:nrow(d_sum)){
+  
+  the_species = d_sum[i,]$Species
+  the_species_snake = snakecase::to_snake_case(the_species)
+  species_folder = paste0(output_folder,the_species_snake,"/")
+  # Temporary fix for pumpkinseed sunfish... will have to figure this out.
+  species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
+  
+  # Link Species column to MaxEnt folder.
+  d_sum[i,]$Species = paste0(
+        "HYPERLINK(\"",
+        species_folder,
+        "\", \"",
+        Species,
+        "\")"
+      )
+  
+  # Make figure that combines waterbody with predictions plot.
+  # for(waterbody_name in d[d$Species == the_species,]$Waterbody){
+  #   the_wb = wbs[wbs$wb_name == waterbody_name,]
+  #   backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+  #   backdrop = ggplot() + 
+  #     geom_image(aes(x=1,y=1,image = backdrop_path), size = 1.8)
+  #   inset 
+  #   full_preds = terra::rast(paste0())
+  #   ggplot() + geom_sf(data = the_wb)
+  # }
+}
+
 
 # Make column names nicer.
 d_sum = d_sum |> 
@@ -341,10 +410,13 @@ d_sum = d_sum |>
     `CDC-listed species in WB` = cdc_listed_in_wb,
     `CDC-listed species in WB names` = cdc_listed_in_wb_names,
     `MaxEnt Habitat Suitability` = wb_maxent_suitability,
+    `MaxEnt Model Performance` = wb_maxent_training_AUC,
     `First Nations Consultation Areas` = first_nations_cons_area_overlapped
   )
 # =========================================
 
+# specify column as formula per openxlsx::writeFormula option #2
+class(df$excel_link) <- "formula"
 # Create excel workbook
 my_wb = createWorkbook()
 
@@ -366,14 +438,27 @@ openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == 'Other AIS i
 openxlsx::addWorksheet(my_wb, "metadata")
 
 metadata = tibble(
-  variable = c("New to Waterbody","First Nations Consultation Areas","Oldest Record Bin"),
+  variable = c("New to Waterbody",
+               "First Nations Consultation Areas",
+               "Oldest Record Bin",
+               "Other AIS in WB",
+               "MaxEnt Habitat Suitability",
+               "MaxEnt Model Performance"),
   notes = c("Is the oldest occurrence record for this species in this waterbody within the last six months (this time range updates each time this R script is re-run)",
             "The First Nations PIP Consultation Areas that are within 10 kilometers of the waterbody",
             "Records from this year receive a level of 1, while records from previous years receive an expoentially smaller priority number. 
-            To calculate this, we take the reciprocal of the log of the current year minus the oldest record in the waterbody plus 2.71")
+            To calculate this, we take the reciprocal of the log of the current year minus the oldest record in the waterbody plus 2.71",
+            "The number of other aquatic invasive species present in the waterbody, according to our occurrence records and iNaturalist. If this number is 0 to 3, it does not affect the priority ranking; 
+            if it is 4 to 6, it reduces the priority by 1; if it is greater than 6, it reduces the priority by 2",
+            "We use MaxEnt based on numerous predictor variables and known locations of species to predict the relative probability of finding the species in question at the chosen waterbody; the binned value
+            is simply the range from 0 to 1 cut into thirds: if the predicted probability is from 0 to 0.33, the binned value is 1; from 0.34 to 0.66, 2; 0.67 to 1, 3",
+            "The Area-Under-Curve of the MaxEnt model is used to evaluate how well a model can estimate known presence and background locations - 
+            it is a score that describes model performance, where the maximum value is 1 and the minimum is 0. 
+            To bin this value, I take anything over 0.9 as having the lowest uncertainty (1), anything between 0.8 and 0.9 as more uncertain (2), and anything lower than 0.8 to be much more uncertain (3)")
 )
 
 openxlsx::writeData(my_wb, "metadata", metadata)
+openxlsx::setColWidths(my_wb,"metadata",cols = 2:ncol(metadata), widths = 120)
 
 openxlsx::saveWorkbook(my_wb, file = "output/example_ais_prioritization_results.xlsx",
                        overwrite = T)

@@ -11,6 +11,8 @@ library(rJava)
 library(ecospat)
 library(ENMeval)
 library(readxl)
+library(ENMTools)
+library(data.table)
 
 #set locations
 
@@ -145,7 +147,7 @@ for(i in 1:length(unique_sp)){
     print("No occurrence records for this species in BC, according to our sources. Skipping MaxEnt run...")
   } else {
     # Do we have a MaxEnt results folder for this species yet? If not, create it.
-    if(!dir.exists(paste0(output_folder,the_sp_snake))){
+    if(!dir.exists(paste0(output_folder,the_sp_snake)) | !file.exists(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/",the_sp_snake,"/MaxEnt_model_run_metadata.csv"))){
       past_expiration_date = TRUE
       new_occurrences = TRUE
     } else {
@@ -180,7 +182,9 @@ for(i in 1:length(unique_sp)){
           predictor_data = predictor_data[[vars_for_this_species]],
           onedrive_path = onedrive_wd,
           number_pseudoabsences = 10000,
-          output_folder = output_folder
+          output_folder = output_folder,
+          feature_classes = c("L","LQ"),
+          regularisation_levels = c(1:5)
         ),
         error = function(e) NULL
       )

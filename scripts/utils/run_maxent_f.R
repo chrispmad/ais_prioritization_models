@@ -39,7 +39,7 @@ run_maxent = function(species,
     }
   }
   # Check for output folder; if it exists already, delete contents.
-  output_fn = paste0(output_folder,"/",snakecase::to_snake_case(species_name),"/")
+  output_fn = paste0(output_folder,snakecase::to_snake_case(species_name),"/")
   
   if(is.null(predictor_data)){
     stop("No predictor data entered; please supply at least one {terra} spatRaster.")
@@ -73,21 +73,41 @@ run_maxent = function(species,
                                         dat[,c("x","y")], ID = FALSE)[[raster_var]]
   }
   
+  # Ensure we have a folder to throw images into!
+  if (!dir.exists(output_fn)) {
+    dir.create(output_fn)
+  } else {
+    old_files <- list.files(path = output_fn, full.names = TRUE)
+    old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
+    old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
+    old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
+    
+    if (length(old_files_to_remove) > 0) {
+      cat("\nDeleting old contents of results folder...\n")
+      file.remove(old_files_to_remove)
+    }
+  }
+  
   dat_just_pred_vars = sf::st_drop_geometry(dat[,c(names(predictor_data))])
   
+  cor <- ENMTools::raster.cor.matrix(predictor_data)
   
-  
-  
-  cor<-raster.cor.matrix(predictor_data)
   thresh<-0.6
   
   dists<-as.dist(1-abs(cor))
+  
   clust <- hclust(dists, method = "single")
+  
   groups <- cutree(clust, h = 1 - thresh)
-  jpeg(paste0(output_fn,"cluterDendogram.jpg"), width = 1200, height = 800)
+  
+  jpeg(paste0(output_fn,"clusterDendogram.jpg"), width = 1200, height = 800)
+  
   ## Visualize groups:
+  
   plot(clust, hang = -1)
+  
   rect.hclust(clust, h = 1 - thresh)
+  
   dev.off()
   
   
@@ -104,13 +124,11 @@ run_maxent = function(species,
   dists<-as.dist(1-abs(cor))
   clust <- hclust(dists, method = "single")
   groups <- cutree(clust, h = 1 - thresh)
-  jpeg(paste0(output_fn,"cluterDendogram_reduced.jpg"), width = 1200, height = 800)
+  jpeg(paste0(output_fn,"clusterDendogram_reduced.jpg"), width = 1200, height = 800)
   ## Visualize groups:
   plot(clust, hang = -1)
   rect.hclust(clust, h = 1 - thresh)
   dev.off()
-  
-  
   
   # Remove samples lacking predictor raster values?
   keep_ind = complete.cases(dat_just_pred_vars)
@@ -123,7 +141,6 @@ run_maxent = function(species,
     pairs(dat_just_pred_vars, lower.panel = panel.smooth2, upper.panel = panel.cor, diag.panel = panel.hist)
   }
   
-  # browser()
   cor_res = cor(dat_just_pred_vars |> dplyr::select(dplyr::where(is.numeric))) |>
    as.data.frame()
   
@@ -151,7 +168,7 @@ run_maxent = function(species,
   # # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
   # predictor_data_low_cor = predictor_data
   
-  predictor_data_low_cor = predictor_data
+  predictor_data
   # Pull out x and y coordinates for presences
   presences = sf::st_drop_geometry(dat[,c('x','y')])
   
@@ -194,8 +211,9 @@ run_maxent = function(species,
   
   tot_box <-rbind(presData, pDat)
   tot_box$index<- 1:nrow(tot_box)
-  tot_box<-setDT(tot_box)
-  melt_box<-melt(tot_box, id.vars = c("presence", "index"), measure.vars = c(1:(ncol(tot_box)-2)))
+  
+  data.table::setDT(tot_box)
+  melt_box <- data.table::melt(tot_box, id.vars = c("presence", "index"), measure.vars = c(1:(ncol(tot_box)-2)))
   
   # levels(melt_box$variable) <- c(
   #   "pH" = "pH",
@@ -215,7 +233,11 @@ run_maxent = function(species,
   #   "pres" = "Pressure",
   #   "slope" = "slope"
   # )
+  
   melt_box$presence <- factor(melt_box$presence, levels = c(1, 0), labels = c("Present", "Absence"))
+  
+  # Make sure value is numeric.
+  melt_box$value = as.numeric(melt_box$value)
   
   predictor_box<-ggplot(melt_box, aes(x = as.factor(presence), y = value, fill = variable)) +
     geom_boxplot() +
@@ -228,48 +250,30 @@ run_maxent = function(species,
       strip.text = element_text(size = 12, face = "bold"), 
       plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
       axis.title = element_text(size = 14, face = "bold"),
-      axis.text.x = element_text(angle = 90, hjust = 1, face = "bold")
+      axis.text.x = element_text(angle = 90, hjust = 1, face = "bold"),
+      legend.position = 'none'
     )
-  ggplot2::ggsave(filename = paste0(output_fn,"pres_bg_boxplot.png"),
+  ggplot2::ggsave(filename = paste0(output_fn,"pres_bg_boxplot.jpg"),
                   plot = predictor_box,
                   dpi = 300, width = 8, height = 8)
   
   
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
-  sink(paste0(output_fn,"MaxEnt_console_output.txt"))
   
-  # output<-capture.output(tryCatch({
-  # },
-  #   me = ENMevaluate(occs = presences, 
-  #                    envs = predictor_data_low_cor, 
-  #                    bg = pseudoabsences, 
-  #                    algorithm = 'maxent.jar', 
-  #                    partitions = 'block', 
-  #                    tune.args = list(fc = feature_classes, 
-  #                                     rm = regularisation_levels))
-  # ))
-  # writeLines(output, paste0(output_fn,"MaxEnt_console_output.txt"))
-  # John and I followed this website as a guide: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html#eval
-  # Consult if necessary!
-  # ENMeval method of running maxent. Great because this includes lots of 
-  # parameter tests etc. inside the function call.
   me = ENMevaluate(occs = presences,
-                   envs = predictor_data_low_cor,
+                   envs = predictor_data,
                    bg = pseudoabsences,
                    algorithm = 'maxent.jar',
                    partitions = 'block',
                    tune.args = list(fc = feature_classes,
                                     rm = regularisation_levels))
   
-  
-  sink()
-  
   top5 <- me@results |> 
     filter(!is.na(AICc)) |> 
     arrange(AICc, delta.AICc, desc(w.AIC)) |> 
     slice_head(n = 5)
-  top5
+
   write.table(top5, paste0(output_fn, "top_5_models.txt"), row.names = F)
   topfc<-as.character(top5[1,]$fc)
   toprm<-as.character(top5[1,]$rm)
@@ -284,9 +288,9 @@ run_maxent = function(species,
   
   predictions = terra::rast(eval.predictions(me)[[opt.aicc$tune.args]])
   
-  eval_model<- eval.models(me)[[opt.aicc$tune.args]]
+  # eval_model<- eval.models(me)[[opt.aicc$tune.args]]
   
-  eval_plot<-eval_model
+  # eval_plot<-eval_model
   # Pull out maxent's predictions for occurrence locations.
 
   # Check out results - this dataframe could be simplified to just hone in 
@@ -330,11 +334,12 @@ run_maxent = function(species,
   # Calculate some values to use as labels and captions in the figure.
   train_samp = key_metrics[key_metrics$metric == 'x_training_samples',]$value
   maxent_results<-as.data.frame(maxent_results)
-  train_auc = maxent_results$auc.train
+  train_auc = maxent_results[maxent_results$name == 'train.auc',]$value
   
   metrics_caption = var_importance |> 
     dplyr::select(variable, percent.contribution) |> 
     dplyr::arrange(dplyr::desc(percent.contribution)) |> 
+    dplyr::filter(percent.contribution >= 0.01) |> 
     dplyr::mutate(title_metric = stringr::str_replace_all(variable,"_"," ")) |>
     dplyr::rowwise() |>
     dplyr::summarise(v = paste0(stringr::str_to_title(title_metric),': ',round(percent.contribution,2),"%")) |>
@@ -394,21 +399,6 @@ run_maxent = function(species,
   )
   
   
-  
-  if (!dir.exists(output_fn)) {
-    dir.create(output_fn)
-  } else {
-    old_files <- list.files(path = output_fn, full.names = TRUE)
-    old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
-    old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
-    old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
-    
-    if (length(old_files_to_remove) > 0) {
-      cat("\nDeleting old contents of results folder...\n")
-      file.remove(old_files_to_remove)
-    }
-  }
-  
   file_version_csv = data.frame(
     run_date = lubridate::ymd(Sys.Date()),
     number_occurrences = number_occurrences_at_outset
@@ -424,7 +414,7 @@ run_maxent = function(species,
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
                   plot = predictions_plot,
                   dpi = 300, width = 8, height = 8)
-  ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot_no_occ.png"),
+  ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot_no_occ.jpg"),
                   plot = predictions_plot_blank,
                   dpi = 300, width = 8, height = 8)
 
