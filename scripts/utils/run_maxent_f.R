@@ -398,6 +398,8 @@ run_maxent = function(species,
       terra::vect()
   )
   
+  # Make a masked version of the predictions, masked by watercourses.
+  predictions_aq = terra::mask(terra::crop(predictions,watercourses),watercourses)
   
   file_version_csv = data.frame(
     run_date = lubridate::ymd(Sys.Date()),
@@ -410,6 +412,7 @@ run_maxent = function(species,
   write.csv(maxent_results, paste0(output_fn,"MaxEnt_Detailed_Model_Fitting_results.csv"), row.names = F)
   write.csv(file_version_csv, paste0(output_fn,"MaxEnt_model_run_metadata.csv"), row.names = F)
   terra::writeRaster(predictions, paste0(output_fn,"MaxEnt_prediction_raster.tif"))
+  terra::writeRaster(predictions_aq, paste0(output_fn,"MaxEnt_prediction_raster_masked_by_watercourses.tif"))
   terra::writeRaster(habitat_or_not, paste0(output_fn,"MaxEnt_prediction_habitat_or_not.tif"))
   ggplot2::ggsave(filename = paste0(output_fn,"MaxEnt_prediction_plot.png"),
                   plot = predictions_plot,
