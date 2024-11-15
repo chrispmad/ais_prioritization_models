@@ -240,26 +240,10 @@ for(i in 1:nrow(d)){
   d[i,]$cdc_listed_in_wb_names = paste0(unique(cdc_by_wb$ENG_NAME),collapse=', ')
 }
 
-# # 4. MaxEnt predicted suitability of waterbodies
-# maxent_results_l = unique(d$Species) |> 
-#   purrr::map( ~ {
-# 
-#     sp_occ = occ_species[occ_species$Species == .x,]
-#     
-#     maxent_results = run_maxent(species = sp_occ, 
-#                predictor_data = predictor_data,
-#                onedrive_path = onedrive_wd,
-#                number_pseudoabsences = 10000
-#     )
-#     
-#     maxent_results
-#   })
-# 
-# names(maxent_results_l) = unique(d$Species)
-
 # Snag the predictions_r object from each element of the list.
 d$wb_maxent_suitability = 0
 d$wb_maxent_training_AUC = 0
+d$wb_maxent_suitability_fig = "need link"
 
 for(i in 1:nrow(d)){
   
@@ -275,7 +259,7 @@ for(i in 1:nrow(d)){
   # Pull out average values for the waterbody.
   mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'mean', na.rm = T)
   # Is Median better??
-  mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'median', na.rm = T)
+  median_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'median', na.rm = T)
   
   d[i,]$wb_maxent_suitability = round(mean_pred_val[1,2],3)
   
@@ -283,12 +267,13 @@ for(i in 1:nrow(d)){
   
   d[i,]$wb_maxent_training_AUC = maxent_key_metrics[maxent_key_metrics$metric == "training_auc",]$value
   
-  the_wb = wbs[wbs$wb_name == waterbody_name,]
+  the_wb = wbs[wbs$wb_name == d[i,]$Waterbody,]
   
   backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
   
   backdrop = ggplot() + 
-    geom_image(aes(x=1,y=1,image = backdrop_path), size = 1.8)
+    geom_image(aes(x=1,y=1,image = backdrop_path), size = 1) + 
+    theme(axis.text = element_blank())
   
   the_pred_for_wb_r = terra::crop(the_pred_r, terra::vect(sf::st_buffer(d[i,]$geometry,5000)))
   
@@ -296,10 +281,31 @@ for(i in 1:nrow(d)){
     tidyterra::geom_spatraster(data = the_pred_for_wb_r) + 
     geom_sf(data = d[i,], col = 'red', fill = 'transparent') + 
     ggthemes::theme_map() + 
-    labs(fill = 'Predicted\nSuitability')
+    scale_fill_viridis_c() +
+    labs(fill = 'Predicted\nSuitability') + 
+    coord_sf(expand = F) +
+    theme(legend.position = 'none',
+          plot.background = element_rect(fill = 'transparent', color = 'black'))
   
-  backdrop + 
-    patchwork::inset_element(inset, 0, 0, 0, 0)
+  combo_plot = backdrop + 
+    patchwork::inset_element(inset, 
+                             left = 0.1,
+                             bottom = 0.15,
+                             right = 0.3,
+                             top = 0.5)
+  
+  ggsave(filename = paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
+         plot = combo_plot,
+         dpi = 300,
+         width = 8, height = 8)
+  
+  d[i,]$wb_maxent_suitability_fig = paste0(
+    "HYPERLINK(\"",
+    paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
+    "\", \"",
+    "LINK",
+    "\")"
+  )
 }
 
 # First Nations territories within 10 kilometers
@@ -380,20 +386,9 @@ for(i in 1:nrow(d_sum)){
         "HYPERLINK(\"",
         species_folder,
         "\", \"",
-        Species,
+        d_sum[i,]$Species,
         "\")"
       )
-  
-  # Make figure that combines waterbody with predictions plot.
-  # for(waterbody_name in d[d$Species == the_species,]$Waterbody){
-  #   the_wb = wbs[wbs$wb_name == waterbody_name,]
-  #   backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
-  #   backdrop = ggplot() + 
-  #     geom_image(aes(x=1,y=1,image = backdrop_path), size = 1.8)
-  #   inset 
-  #   full_preds = terra::rast(paste0())
-  #   ggplot() + geom_sf(data = the_wb)
-  # }
 }
 
 
@@ -416,7 +411,9 @@ d_sum = d_sum |>
 # =========================================
 
 # specify column as formula per openxlsx::writeFormula option #2
-class(df$excel_link) <- "formula"
+class(d_sum$Species) <- "formula"
+class(d_sum$wb_maxent_suitability_fig) <- "formula"
+
 # Create excel workbook
 my_wb = createWorkbook()
 
@@ -427,10 +424,14 @@ openxlsx::addWorksheet(my_wb, "model")
 openxlsx::writeData(my_wb, "model", d_sum)
 
 red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour = '#bdf0e6')
+blue_text = openxlsx::createStyle(fontColour = 'blue', fontSize = 12)
 
 openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="summed_bins"))
+openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="Species"))
+openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="wb_maxent_suitability_fig"))
 
 openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(d_sum), widths = "auto")
+openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == "Species"), widths = 20)
 openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == "First Nations Consultation Areas"), widths = 30)
 openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == 'Other AIS in WB names'), widths = 40)
 
