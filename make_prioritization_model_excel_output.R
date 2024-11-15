@@ -160,6 +160,8 @@ for(i in 1:nrow(d)){
 }
 
 # See if other AIS are in the waterbody - if so, count up number of unique species!
+d$native_species_in_wb = 0
+d$native_species_in_wb_names = NA
 d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
@@ -167,17 +169,21 @@ for(the_wb in wbs_list){
   
   species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
   
-  # Just keep invasive species from our list.
+  # Invasive species (identified on our priority AIS list).
   ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
-  
   other_ais_in_wb = unique(ais_in_wb$Species)
+  
+  # Native species (not on the AIS list)
+  native_sp_in_wb = species_in_wb |> dplyr::filter(!Species %in% str_to_title(pr_sp$name))
   
   d_for_waterbody = d[d$Waterbody == the_wb$wb_name,]
   
   for(i in 1:nrow(d_for_waterbody)){
-    other_ais_in_wb = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
-    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb)
-    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb, collapse = ', ')
+    other_ais_in_wb_2 = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
+    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb_2)
+    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb_2, collapse = ', ')
+    d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb = length(native_sp_in_wb)
+    d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb_names = paste0(native_sp_in_wb, collapse = ', ')
   }
 }
 
