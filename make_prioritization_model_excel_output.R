@@ -130,6 +130,9 @@ d = d |>
 
 d = sf::st_set_geometry(d, 'geometry')
 
+# Add waterbody area and depth if available.
+d$Waterbody_Area_sq_km = as.numeric(sf::st_area(d$geometry))/1000000
+
 all_wb = d |> dplyr::summarise()
 
 # =========================================
