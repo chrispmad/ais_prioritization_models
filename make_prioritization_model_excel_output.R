@@ -81,43 +81,69 @@ unique_wbs = d |>
   dplyr::select(Waterbody, Region) |> 
   dplyr::distinct()
 
+# If the waterbody is any of the following: Okanagan Lake, Okanagan River,
+# Skaha Lake, Vaseux Lake, Vaseux Creek, Osoyoos Lake, treat those as one monolithic
+# unit.
+TO_string = c("Okanagan Lake","Okanagan River","Skaha Lake",
+              "Vaseux Lake","Vaseux Creek","Osoyoos Lake")
+
 wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
   
   the_reg = regs[str_detect(regs$ORG_UNIT_NAME,.y),] |> sf::st_transform(3005)
   
-  potential_lakes = bcdc_query_geodata('freshwater-atlas-lakes') |> 
-    filter(INTERSECTS(the_reg)) |>
-    filter(GNIS_NAME_1 == .x) |> 
-    collect()
-  
-  potential_rivers = bcdc_query_geodata('freshwater-atlas-rivers') |> 
-    filter(INTERSECTS(the_reg$geometry)) |>
-    filter(GNIS_NAME_1 == .x) |> 
-    collect()
-  
-  if(nrow(potential_lakes) > 0 & nrow(potential_rivers) > 0){
-    wbs = dplyr::bind_rows(
-      potential_lakes |> dplyr::select(wb_name = GNIS_NAME_1, geometry),
-      potential_rivers |> dplyr::select(wb_name = GNIS_NAME_1, geometry)
-    )
-  }
-  if(nrow(potential_lakes) > 0 & nrow(potential_rivers) == 0){
-    wbs = potential_lakes |> dplyr::select(wb_name = GNIS_NAME_1, geometry)
-  }
-  if(nrow(potential_lakes) == 0 & nrow(potential_rivers) > 0){
-    wbs = potential_rivers |> dplyr::select(wb_name = GNIS_NAME_1, geometry)
-  }
-  
-  if(nrow(potential_lakes) == 0 & nrow(potential_rivers) == 0){
-    return(NULL)
+  if(!.x %in% TO_string){
+    potential_lakes = bcdc_query_geodata('freshwater-atlas-lakes') |> 
+      filter(INTERSECTS(the_reg)) |>
+      filter(GNIS_NAME_1 == .x) |> 
+      collect()
+    
+    potential_rivers = bcdc_query_geodata('freshwater-atlas-rivers') |> 
+      filter(INTERSECTS(the_reg$geometry)) |>
+      filter(GNIS_NAME_1 == .x) |> 
+      collect()
+    
+    if(nrow(potential_lakes) > 0 & nrow(potential_rivers) > 0){
+      wbs = dplyr::bind_rows(
+        potential_lakes |> dplyr::select(wb_name = GNIS_NAME_1, FWA_WATERSHED_CODE, geometry),
+        potential_rivers |> dplyr::select(wb_name = GNIS_NAME_1, FWA_WATERSHED_CODE, geometry)
+      )
+    }
+    if(nrow(potential_lakes) > 0 & nrow(potential_rivers) == 0){
+      wbs = potential_lakes |> dplyr::select(wb_name = GNIS_NAME_1, FWA_WATERSHED_CODE, geometry)
+    }
+    if(nrow(potential_lakes) == 0 & nrow(potential_rivers) > 0){
+      wbs = potential_rivers |> dplyr::select(wb_name = GNIS_NAME_1, FWA_WATERSHED_CODE, geometry)
+    }
+    
+    if(nrow(potential_lakes) == 0 & nrow(potential_rivers) == 0){
+      return(NULL)
+    } else {
+      return(
+        wbs |> 
+          dplyr::group_by(wb_name,FWA_WATERSHED_CODE) |> 
+          dplyr::summarise()
+      )
+    }
   } else {
-    return(
-      wbs |> 
-        dplyr::group_by(wb_name) |> 
-        dplyr::summarise()
-    )
+    # The name is one of the Thompson-Okanagan string. Let's just snag all those 
+    # waterbodies.
+    wbs_rivers = bcdc_query_geodata('freshwater-atlas-rivers') |> 
+      filter(GNIS_NAME_1 %in% TO_string) |> 
+      collect() |> 
+      dplyr::summarise()
+    
+    wbs_lakes = bcdc_query_geodata('freshwater-atlas-lakes') |> 
+      filter(GNIS_NAME_1 %in% TO_string) |> 
+      collect() |> 
+      dplyr::summarise()
+    
+    wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |> 
+      dplyr::summarise() |> 
+      dplyr::mutate(wb_name = .x) |> 
+      dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+    
+    wbs
   }
-  
 }, .progress = TRUE)
 
 wbs = wbs_list |> 
@@ -134,6 +160,19 @@ d = sf::st_set_geometry(d, 'geometry')
 d$Waterbody_Area_sq_km = as.numeric(sf::st_area(d$geometry))/1000000
 
 all_wb = d |> dplyr::summarise()
+
+# Calculate number of inflows and outflows using fwa.connect package!!
+# If you don't have this package installed, grab it from Chris' github page:
+#devtools::install_github('chrispmad/fwa.connect')
+library(fwa.connect)
+
+tbl_of_fwa_junctions = fwa.connect::stream_conn_tbl()
+
+d = d |> 
+  rowwise() |> 
+  dplyr::mutate(number_outflows = nrow(tbl_of_fwa_junctions[tbl_of_fwa_junctions$upstream_fwa_code == FWA_WATERSHED_CODE,]),
+                number_inflows = nrow(tbl_of_fwa_junctions[tbl_of_fwa_junctions$downstream_fwa_code == FWA_WATERSHED_CODE,])) |> 
+  dplyr::ungroup()
 
 # =========================================
 
@@ -162,33 +201,33 @@ for(i in 1:nrow(d)){
   d[i,]$records_in_wb = nrow(recs_by_wb)
 }
 
-# See if other AIS are in the waterbody - if so, count up number of unique species!
-d$native_species_in_wb = 0
-d$native_species_in_wb_names = NA
-d$other_ais_in_wb = 0
-d$other_ais_in_wb_names = NA
-
-for(the_wb in wbs_list){
-  
-  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
-  
-  # Invasive species (identified on our priority AIS list).
-  ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
-  other_ais_in_wb = unique(ais_in_wb$Species)
-  
-  # Native species (not on the AIS list)
-  native_sp_in_wb = species_in_wb |> dplyr::filter(!Species %in% str_to_title(pr_sp$name))
-  
-  d_for_waterbody = d[d$Waterbody == the_wb$wb_name,]
-  
-  for(i in 1:nrow(d_for_waterbody)){
-    other_ais_in_wb_2 = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
-    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb_2)
-    d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb_2, collapse = ', ')
-    d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb = length(native_sp_in_wb)
-    d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb_names = paste0(native_sp_in_wb, collapse = ', ')
-  }
-}
+# # See if other AIS are in the waterbody - if so, count up number of unique species!
+# d$native_species_in_wb = 0
+# d$native_species_in_wb_names = NA
+# d$other_ais_in_wb = 0
+# d$other_ais_in_wb_names = NA
+# 
+# for(the_wb in wbs_list){
+#   
+#   species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
+#   
+#   # Invasive species (identified on our priority AIS list).
+#   ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
+#   other_ais_in_wb = unique(ais_in_wb$Species)
+#   
+#   # Native species (not on the AIS list)
+#   native_sp_in_wb = species_in_wb |> dplyr::filter(!Species %in% str_to_title(pr_sp$name))
+#   
+#   d_for_waterbody = d[d$Waterbody == the_wb$wb_name,]
+#   
+#   for(i in 1:nrow(d_for_waterbody)){
+#     other_ais_in_wb_2 = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
+#     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb_2)
+#     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb_2, collapse = ', ')
+#     d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb = length(native_sp_in_wb)
+#     d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb_names = paste0(native_sp_in_wb, collapse = ', ')
+#   }
+# }
 
 # 2. New to Waterbody - e.g. are occurrence records for waterbody from the last year?
 # Also, year of oldest record.
@@ -215,38 +254,174 @@ for(i in 1:nrow(d)){
   }
 }
 
-# 3. Distinct DFO SARA species in waterbody
+# 3. Distinct DFO SARA species, COSEWIC and CDC species in waterbody.
 sara = sf::read_sf(paste0(onedrive_wd,"CNF/DFO_SARA_occ_data_QGIS_simplified.gpkg")) |> 
   sf::st_transform(4326) |> 
   sf::st_make_valid()
 
-d$sara_in_wb = 0
-d$sara_in_wb_names = NA
+# Go up one level in the file structure to find the SAR scraper R project folder.
+# This is where the 2 cleaned tables (cleaned by John with Python!) reside.
+federal_risk_registry_tbl = tidyr::as_tibble(read.csv("../SAR_scraper/output/risk_status_merged.csv"))
+  
+cosewic_risk_status_sp = federal_risk_registry_tbl |> 
+  dplyr::filter(COSEWIC.status %in% c("Endangered","Special Concern","Threatened")) |>
+  dplyr::filter(Schedule.status %in% c("","No Status")) |> 
+  dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
+  dplyr::select(COSEWIC.common.name) |> 
+  dplyr::filter(!COSEWIC.common.name %in% c("White Sturgeon")) |> 
+  dplyr::distinct() |> 
+  dplyr::pull(COSEWIC.common.name)
 
-for(i in 1:nrow(d)){
-  sara_by_wb = sara |> sf::st_filter(d[i,]$geometry)
-  d[i,]$sara_in_wb = length(unique(sara_by_wb$Scientific_Name))
-  d[i,]$sara_in_wb_names = paste0(unique(sara_by_wb$Common_Name_EN), collapse = ', ')
-}
-
-# 3.a CDC Red- and Blue-listed species.
+sara_sp = federal_risk_registry_tbl |> 
+  dplyr::filter(Schedule.status %in% c("Endangered","Special Concern","Threatened")) |> 
+  dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
+  dplyr::select(Legal.common.name) |> 
+  dplyr::distinct() |> 
+  dplyr::pull(Legal.common.name)
 
 cdc = bcdc_query_geodata('species-and-ecosystems-at-risk-publicly-available-occurrences-cdc') |> 
   filter(INTERSECTS(local(st_transform(all_wb,3005)))) |> 
   collect() |> 
-  st_transform(4326)
+  st_transform(4326) |> 
+  sf::st_filter(all_wb)
 
 cdc_f = cdc |> 
   dplyr::filter(!is.na(TAX_CLASS)) |> 
   dplyr::filter(TAX_CLASS %in% c("amphibians","ray-finned fishes","bivalves","gastropods"))
 
+d$sara_in_wb = 0
+d$sara_in_wb_names = NA
+d$sara_downstream = 0
+d$sara_downstream_names = NA
 d$cdc_listed_in_wb = 0
 d$cdc_listed_in_wb_names = NA
+d$cdc_listed_downstream = 0
+d$cdc_listed_downstream_names = NA
+d$COSEWIC_in_wb = 0
+d$COSEWIC_in_wb_names = NA
+d$COSEWIC_downstream = 0
+d$COSEWIC_downstream_names = NA
+d$native_species_in_wb = 0
+d$native_species_in_wb_names = NA
+d$other_ais_in_wb = 0
+d$other_ais_in_wb_names = NA
 
-for(i in 1:nrow(d)){
-  cdc_by_wb = cdc_f |> sf::st_filter(d[i,]$geometry)
-  d[i,]$cdc_listed_in_wb = length(unique(cdc_by_wb$SCI_NAME))
-  d[i,]$cdc_listed_in_wb_names = paste0(unique(cdc_by_wb$ENG_NAME),collapse=', ')
+# This loop cycles through the waterbodies, searching for spatial overlaps with
+# polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
+# data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
+# etc. It fills in all the variables we initialize above.
+for(i in 1:nrow(unique_wbs)){
+  
+  the_wb = unique_wbs[i,]
+  
+  print(paste0("Working on waterbody ",i,", which is ",the_wb$Waterbody))
+  
+  geom_and_fwa_for_wb = d |> dplyr::filter(Waterbody == the_wb$Waterbody, Region == the_wb$Region) |> 
+    dplyr::select(Waterbody,Region,FWA_WATERSHED_CODE,geometry)
+  
+  the_wb = the_wb |> dplyr::left_join(geom_and_fwa_for_wb, by = join_by(Waterbody, Region))
+  
+  the_wb = sf::st_set_geometry(the_wb, "geometry")
+  
+  # Find downstream waterbody
+  # If the chosen waterbody is one of the Thompson string, don't look downstream.
+  if(the_wb$Waterbody %in% TO_string){
+    ds_wb = the_wb |> dplyr::select(geometry)
+    ds_wb = ds_wb[0,]
+  } else {
+    # Waterbodies downstream, up to 5 kilometers away.
+    buffer_5km = sf::st_buffer(sf::st_as_sfc(sf::st_bbox(the_wb)),5000)
+    wb_fwa_code = the_wb$FWA_WATERSHED_CODE
+    ds_river = bcdata::bcdc_query_geodata('freshwater-atlas-rivers') |> filter(FWA_WATERSHED_CODE == wb_fwa_code) |> collect() |> dplyr::summarise(Waterbody = GNIS_NAME_1) |> sf::st_transform(4326)
+    ds_lake = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> filter(FWA_WATERSHED_CODE == wb_fwa_code) |> collect() |> dplyr::summarise(Waterbody = GNIS_NAME_1) |> sf::st_transform(4326)
+    if(nrow(ds_lake)>0 & ds_lake$Waterbody != the_wb$Waterbody){
+      ds_wb = ds_lake
+    } else {
+      ds_wb = ds_river
+    }
+    ds_wb = sf::st_intersection(ds_wb, buffer_5km)
+  }
+  
+  # Do initial spatial filtering with SARA and CDC spatial files.
+  sara_polys_in_wb = sara |> sf::st_filter(the_wb)
+  sara_polys_in_ds_wb = sara |> sf::st_filter(ds_wb)
+  cdc_polys_in_wb = cdc_f |> sf::st_filter(the_wb)
+  cdc_polys_in_ds_wb = cdc_f |> sf::st_filter(ds_wb)
+  
+  # Look up all species present in the waterbody, to find COSEWIC species
+  # and native species. This looks only for taxa labelled "fishes","Actinopterygii", and "Mollusca",
+  # but you can add more taxa if desired.
+  species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = sf::st_transform(the_wb,3005))
+  # Same for downstream waterbody, unless there is none, as in the case of the Thompson-Okanagan string of lakes, which
+  # we are treating as a single, connected unit.
+  if(nrow(ds_wb) == 0){
+    species_in_ds_wb = c()
+  } else {
+    species_in_ds_wb = bcinvadeR::find_all_species_in_waterbody(wb = sf::st_transform(ds_wb,3005))
+  }
+  
+  # Find all species present.
+  unique_species_in_wb = unique(species_in_wb$Species)
+  unique_species_in_ds_wb = unique(species_in_ds_wb$Species)
+  
+  # Clean up this vector a bit: delete anything in parentheses. Any other steps?
+  unique_species_in_wb = stringr::str_squish(stringr::str_remove_all(unique_species_in_wb, " (\\(.*\\)|\\-.*)"))
+  unique_species_in_ds_wb = stringr::str_squish(stringr::str_remove_all(unique_species_in_ds_wb, " (\\(.*\\)|\\-.*)"))
+  
+  # Drop empty elements.
+  unique_species_in_wb = unique_species_in_wb[unique_species_in_wb != ""]
+  unique_species_in_ds_wb = unique_species_in_ds_wb[unique_species_in_ds_wb != ""]
+  
+  # Find list of native species, aquatic invasive species, COSEWIC, SARA listed species.
+  native_sp_in_wb = unique(unique_species_in_wb[!unique_species_in_wb %in% str_to_title(pr_sp$name)])
+  ais_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% str_to_title(pr_sp$name)])
+  cosewic_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% cosewic_risk_status_sp])
+  sara_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% sara_sp])
+  
+  # Same for downstream.
+  # native_sp_in_ds_wb = unique(unique_species_in_ds_wb[!unique_species_in_ds_wb %in% str_to_title(pr_sp$name)]
+  # ais_in_ds_wb = unique_species_in_ds_wb[unique_species_in_ds_wb %in% str_to_title(pr_sp$name)]
+  cosewic_sp_in_ds_wb = unique(unique_species_in_ds_wb[unique_species_in_ds_wb %in% cosewic_risk_status_sp])
+  sara_sp_in_ds_wb = unique(unique_species_in_ds_wb[unique_species_in_ds_wb %in% sara_sp])
+  
+  # Now find all rows in our dataframe that have this waterbody as their target.
+  # For each one, count up the above species groupings.
+  for(y in 1:nrow(d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,])){
+    # Ensure this gets applied to the right rows in d.
+    
+    # Add on AIS and Native species
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb))
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb) > 0, paste0(ais_in_wb, collapse = ", "), NA)
+    
+    # Combine sara spatial overlaps with point data that is of a SARA-listed species name.
+    sara_combo = unique(c(unique(sara_sp_in_wb),sara_polys_in_wb$Common_Name_EN))
+    sara_combo_ds = unique(c(unique(sara_sp_in_ds_wb),sara_polys_in_ds_wb$Common_Name_EN))
+    
+    # CDC names. Make sure SARA and COSEWIC names aren't present here.
+    cdc_in_wb = unique(cdc_polys_in_wb$ENG_NAME)
+    cdc_in_wb = cdc_in_wb[!cdc_in_wb %in% sara_sp]
+    cdc_in_wb = cdc_in_wb[!cdc_in_wb %in% cosewic_risk_status_sp]
+    cdc_in_ds_wb = unique(cdc_polys_in_ds_wb$ENG_NAME)
+    cdc_in_ds_wb = cdc_in_ds_wb[!cdc_in_ds_wb %in% sara_sp]
+    cdc_in_ds_wb = cdc_in_ds_wb[!cdc_in_ds_wb %in% cosewic_risk_status_sp]
+    
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_in_wb = length(unique(sara_combo))
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_in_wb_names = ifelse(length(sara_combo) > 0, paste0(sara_combo, collapse = ", "), NA)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_downstream = length(unique(sara_combo_ds))
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_downstream_names = ifelse(length(sara_combo_ds) > 0, paste0(sara_combo_ds, collapse = ", "), NA)
+    
+    # COSEWIC species
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$COSEWIC_in_wb = length(cosewic_sp_in_wb)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$COSEWIC_in_wb_names = ifelse(length(cosewic_sp_in_wb) > 0, paste0(cosewic_sp_in_wb, collapse = ", "), NA)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$COSEWIC_downstream = length(cosewic_sp_in_ds_wb)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$COSEWIC_downstream_names = ifelse(length(cosewic_sp_in_ds_wb) > 0, paste0(cosewic_sp_in_ds_wb, collapse = ", "), NA)
+    
+    # CDC species
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_in_wb = length(cdc_in_wb)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_in_wb_names = ifelse(length(cdc_in_wb) > 0, paste0(cdc_in_wb, collapse = ", "), NA)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_downstream = length(cdc_in_ds_wb)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_downstream_names = ifelse(length(cdc_in_ds_wb) > 0, paste0(cdc_in_ds_wb, collapse = ", "), NA)
+  }
 }
 
 # Snag the predictions_r object from each element of the list.
