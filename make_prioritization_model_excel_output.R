@@ -329,6 +329,7 @@ for(i in 1:nrow(unique_wbs)){
     ds_wb = the_wb |> dplyr::select(geometry)
     ds_wb = ds_wb[0,]
   } else {
+    
     # Waterbodies downstream, up to 5 kilometers away.
     buffer_5km = sf::st_buffer(sf::st_as_sfc(sf::st_bbox(the_wb)),5000)
     wb_fwa_code = the_wb$FWA_WATERSHED_CODE
@@ -388,6 +389,7 @@ for(i in 1:nrow(unique_wbs)){
   # For each one, count up the above species groupings.
   for(y in 1:nrow(d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,])){
     # Ensure this gets applied to the right rows in d.
+ 
     # Add on AIS and Native species
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb))
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb) > 0, paste0(ais_in_wb, collapse = ", "), NA)
