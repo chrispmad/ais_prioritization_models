@@ -265,7 +265,7 @@ federal_risk_registry_tbl = tidyr::as_tibble(read.csv("../SAR_scraper/output/ris
   
 cosewic_risk_status_sp = federal_risk_registry_tbl |> 
   dplyr::filter(COSEWIC.status %in% c("Endangered","Special Concern","Threatened")) |>
-  dplyr::filter(Schedule.status %in% c("","No Status")) |> 
+  dplyr::filter(COSEWIC.status %in% c("","No Status")) |> 
   dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
   dplyr::select(COSEWIC.common.name) |> 
   dplyr::filter(!COSEWIC.common.name %in% c("White Sturgeon")) |> 
@@ -273,11 +273,11 @@ cosewic_risk_status_sp = federal_risk_registry_tbl |>
   dplyr::pull(COSEWIC.common.name)
 
 sara_sp = federal_risk_registry_tbl |> 
-  dplyr::filter(Schedule.status %in% c("Endangered","Special Concern","Threatened")) |> 
+  dplyr::filter(COSEWIC.status %in% c("Endangered","Special Concern","Threatened")) |> 
   dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
-  dplyr::select(Legal.common.name) |> 
+  dplyr::select(COSEWIC.common.name) |> 
   dplyr::distinct() |> 
-  dplyr::pull(Legal.common.name)
+  dplyr::pull(COSEWIC.common.name)
 
 cdc = bcdc_query_geodata('species-and-ecosystems-at-risk-publicly-available-occurrences-cdc') |> 
   filter(INTERSECTS(local(st_transform(all_wb,3005)))) |> 
@@ -388,7 +388,6 @@ for(i in 1:nrow(unique_wbs)){
   # For each one, count up the above species groupings.
   for(y in 1:nrow(d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,])){
     # Ensure this gets applied to the right rows in d.
-    
     # Add on AIS and Native species
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb))
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb) > 0, paste0(ais_in_wb, collapse = ", "), NA)
