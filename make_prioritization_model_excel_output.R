@@ -24,37 +24,9 @@ lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/Gene
 output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
 
 # list of invasive species on our watch list.
-pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
-                            skip = 20)
-names(pr_sp) <- c("group","status","name","genus","species")
-# Just for our species of interest.
-pr_sp = pr_sp |>
-  dplyr::filter(group == 'Fish' | name %in% c("Whirling disease") | stringr::str_detect(name, '(mussel|crayfish|mystery snail|mudsnail|clam|jellyfish|shrimp|waterflea)')) |> 
-# Split out grouped species names into separate rows.
-  dplyr::mutate(name = stringr::str_squish(name)) |>
-  dplyr::filter(name != 'Bullhead') |>
-  dplyr::arrange(name) |> 
-# Add a couple alternate ways of spelling species common names.
-  dplyr::bind_rows(
-    tidyr::tibble(
-      group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
-                'Other invertebrates','Other invertebrates','Other invertebrates',
-                'Fish','Fish'),
-      status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
-                 'Provincial Containment','Provincial Containment','Provincial Containment','Management',
-                 'Prevent'),
-      name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
-               'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
-               'Mosquitofish'),
-      genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
-                'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
-      species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
-                  'fluminea','fluminea','fluminea','vitreus','affinis')
-    )
-  )
+source('scripts/utils/gather_AIS_data.R')
 
-# Ensure species' common names are Sentence case.
-pr_sp$name = stringr::str_to_sentence(pr_sp$name)
+pr_sp = gather_ais_data(data = 'species list', lan_root = lan_root, onedrive_wd = onedrive_wd)
 
 # Make BC shapefile.
 bc = bcmaps::bc_bound() |> 
@@ -180,9 +152,13 @@ d = d |>
 
 # 1. Number of records in waterbody
 
-occ_species = unique(d$Species) |> 
-  purrr::map( ~ {bcinvadeR::grab_aq_occ_data(.x)}) |> 
-  dplyr::bind_rows()
+# occ_species = unique(d$Species) |> 
+#   purrr::map( ~ {bcinvadeR::grab_aq_occ_data(.x)}) |> 
+#   dplyr::bind_rows()
+
+occ_species = gather_ais_data(data = 'occurrences', lan_root = lan_root,
+                              onedrive_wd = onedrive_wd, redo = F) |> 
+  dplyr::filter(Species %in% unique(d$Species))
 
 # Ensure date is always in this format: YYYY-MM-DD and not in 'excel' format.
 occ_species = occ_species |> 
@@ -200,34 +176,6 @@ for(i in 1:nrow(d)){
   recs_by_wb = recs_by_sp |> sf::st_filter(st_buffer(d[i,]$geometry, 20))
   d[i,]$records_in_wb = nrow(recs_by_wb)
 }
-
-# # See if other AIS are in the waterbody - if so, count up number of unique species!
-# d$native_species_in_wb = 0
-# d$native_species_in_wb_names = NA
-# d$other_ais_in_wb = 0
-# d$other_ais_in_wb_names = NA
-# 
-# for(the_wb in wbs_list){
-#   
-#   species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = the_wb)
-#   
-#   # Invasive species (identified on our priority AIS list).
-#   ais_in_wb = species_in_wb |> dplyr::filter(Species %in% str_to_title(pr_sp$name))
-#   other_ais_in_wb = unique(ais_in_wb$Species)
-#   
-#   # Native species (not on the AIS list)
-#   native_sp_in_wb = species_in_wb |> dplyr::filter(!Species %in% str_to_title(pr_sp$name))
-#   
-#   d_for_waterbody = d[d$Waterbody == the_wb$wb_name,]
-#   
-#   for(i in 1:nrow(d_for_waterbody)){
-#     other_ais_in_wb_2 = other_ais_in_wb[!stringr::str_detect(other_ais_in_wb, d_for_waterbody[i,]$Species)]
-#     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb = length(other_ais_in_wb_2)
-#     d[d$Waterbody == the_wb$wb_name,][i,]$other_ais_in_wb_names = paste0(other_ais_in_wb_2, collapse = ', ')
-#     d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb = length(native_sp_in_wb)
-#     d[d$Waterbody == the_wb$wb_name,][i,]$native_species_in_wb_names = paste0(native_sp_in_wb, collapse = ', ')
-#   }
-# }
 
 # 2. New to Waterbody - e.g. are occurrence records for waterbody from the last year?
 # Also, year of oldest record.
