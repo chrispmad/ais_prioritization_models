@@ -78,13 +78,13 @@ run_maxent = function(species,
     dir.create(output_fn)
   } else {
     old_files <- list.files(path = output_fn, full.names = TRUE)
-    old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
-    old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
-    old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
+    # old_files_to_remove <- old_files[!grepl("\\.jpg$", old_files)]
+    # old_files_to_remove <- old_files_to_remove[!grepl("MaxEnt_console_output.txt", old_files_to_remove)]
+    # old_files_to_remove <- old_files_to_remove[!grepl("pres_bg_boxplot.png", old_files_to_remove)]
     
-    if (length(old_files_to_remove) > 0) {
+    if (length(old_files) > 0) {
       cat("\nDeleting old contents of results folder...\n")
-      file.remove(old_files_to_remove)
+      file.remove(old_files)
     }
   }
   
@@ -109,7 +109,6 @@ run_maxent = function(species,
   rect.hclust(clust, h = 1 - thresh)
   
   dev.off()
-  
   
   unique_groups <- unique(groups)
   selected_predictors <- sapply(unique_groups, function(group_num) {
@@ -168,7 +167,7 @@ run_maxent = function(species,
   # # predictor_data_low_cor = predictor_data[[names(dat)[-c(1,2)]]]
   # predictor_data_low_cor = predictor_data
   
-  predictor_data
+  # predictor_data
   # Pull out x and y coordinates for presences
   presences = sf::st_drop_geometry(dat[,c('x','y')])
   
@@ -364,7 +363,7 @@ run_maxent = function(species,
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
     )
-  predictions_plot
+  # predictions_plot
   
   predictions_plot_blank <- ggplot() +
     tidyterra::geom_spatraster(data = predictions) +
@@ -399,7 +398,7 @@ run_maxent = function(species,
   )
   
   # Make a masked version of the predictions, masked by watercourses.
-  predictions_aq = terra::mask(terra::crop(predictions,watercourses),watercourses)
+  predictions_aq = terra::mask(terra::crop(terra::resample(predictions, watercourses),watercourses),watercourses)
   
   file_version_csv = data.frame(
     run_date = lubridate::ymd(Sys.Date()),

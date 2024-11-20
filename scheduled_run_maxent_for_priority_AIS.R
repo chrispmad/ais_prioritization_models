@@ -183,7 +183,7 @@ for(i in 1:length(unique_sp)){
           onedrive_path = onedrive_wd,
           number_pseudoabsences = 10000,
           output_folder = output_folder,
-          feature_classes = c("L","LQ"),
+          feature_classes = c("LQ"),
           regularisation_levels = c(1:5)
         ),
         error = function(e) NULL

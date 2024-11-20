@@ -310,7 +310,7 @@ d$other_ais_in_wb_names = NA
 # polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
 # data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
 # etc. It fills in all the variables we initialize above.
-for(i in 1:nrow(unique_wbs)){
+for(i in 6:nrow(unique_wbs)){
   
   the_wb = unique_wbs[i,]
   
@@ -333,14 +333,90 @@ for(i in 1:nrow(unique_wbs)){
     # Waterbodies downstream, up to 5 kilometers away.
     buffer_5km = sf::st_buffer(sf::st_as_sfc(sf::st_bbox(the_wb)),5000)
     wb_fwa_code = the_wb$FWA_WATERSHED_CODE
-    ds_river = bcdata::bcdc_query_geodata('freshwater-atlas-rivers') |> filter(FWA_WATERSHED_CODE == wb_fwa_code) |> collect() |> dplyr::summarise(Waterbody = GNIS_NAME_1) |> sf::st_transform(4326)
-    ds_lake = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> filter(FWA_WATERSHED_CODE == wb_fwa_code) |> collect() |> dplyr::summarise(Waterbody = GNIS_NAME_1) |> sf::st_transform(4326)
-    if(nrow(ds_lake)>0 & ds_lake$Waterbody != the_wb$Waterbody){
-      ds_wb = ds_lake
-    } else {
-      ds_wb = ds_river
+    ds_wb_fwa_code = stringr::str_replace(wb_fwa_code,"[0-9]{6}(?=\\-000000)","000000")
+    ds_river = bcdata::bcdc_query_geodata('freshwater-atlas-rivers') |> filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> collect() |> sf::st_transform(4326)
+    if(nrow(ds_river) > 0){
+      # Find the longest / largest river. Keep that name, in cases where there's multiple.
+      largest_river = ds_river |> 
+        dplyr::filter(!is.na(GNIS_NAME_1)) |> 
+        dplyr::arrange(dplyr::desc(AREA_HA)) |> 
+        dplyr::slice(1) |> 
+        dplyr::pull(GNIS_NAME_1)
+      
+      ds_river = ds_river |> 
+        dplyr::filter(!is.na(GNIS_NAME_1)) |> 
+        dplyr::rename(Waterbody = GNIS_NAME_1) |> 
+        dplyr::filter(Waterbody == largest_river) |> 
+        dplyr::group_by(Waterbody) |> 
+        dplyr::summarise()
     }
-    ds_wb = sf::st_intersection(ds_wb, buffer_5km)
+    
+    ds_lakes = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> 
+      filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> 
+      collect() |> sf::st_transform(4326)
+    
+    if(nrow(ds_lakes) > 0){
+      ds_lakes = ds_lakes |> 
+        dplyr::filter(!is.na(GNIS_NAME_1)) |> 
+        dplyr::rename(Waterbody = GNIS_NAME_1) |> 
+        dplyr::group_by(Waterbody) |> 
+        dplyr::summarise()
+    }
+    # Some big edge cases: 
+    
+    # 1. Is the downstream either the Columbia River?
+    # Since it dips out of BC, then back in, things get very complicated, and 
+    # lakes that seem implicated perhaps should not be; in this case, just take
+    # the Columbia River, trim it to 5 km, and be done with it!
+    
+    if("Columbia River" %in% ds_river$Waterbody){
+      ds_lakes = ds_lakes[0,]
+    }
+    
+    # 2. is the Thompson-Okanagan string of connected lakes
+    # present in the downstream names? If so, those get priority and we 
+    # can set the geometry to be the merged lakes.
+    
+    if("Okanagan Lake" %in% unique(ds_lakes$Waterbody)){
+      # Downstream waterbody is the Thompson-Okanagan string!! Assign that to wb_ds
+      wbs_rivers = bcdc_query_geodata('freshwater-atlas-rivers') |> 
+        filter(GNIS_NAME_1 %in% TO_string) |> 
+        collect() |> 
+        dplyr::summarise()
+      
+      wbs_lakes = bcdc_query_geodata('freshwater-atlas-lakes') |> 
+        filter(GNIS_NAME_1 %in% TO_string) |> 
+        collect() |> 
+        dplyr::summarise()
+      
+      wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |> 
+        dplyr::summarise() |> 
+        dplyr::mutate(Waterbody = 'Okanagan_Lake_System') |> 
+        dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+      
+      ds_lake = wbs
+    } else {
+      # If there are multiple lakes, take the largest one.
+      if(length(unique(ds_lakes$Waterbody)) > 1){
+        chosen_lake = ds_lakes |> 
+          dplyr::arrange(dplyr::desc(AREA_HA)) |> 
+          dplyr::slice(1) |> 
+          dplyr::pull(Waterbody)
+        ds_lake = ds_lakes |> 
+          dplyr::filter(Waterbody == chosen_lake)
+      }
+      ds_lake = ds_lakes
+      rm(ds_lakes)
+    }
+    
+    if(nrow(ds_lake) > 0){
+      if(ds_lake$Waterbody != the_wb$Waterbody){
+        ds_wb = ds_lake
+      }
+    } else {
+      ds_wb = ds_river |> 
+        sf::st_intersection(buffer_5km)
+    }
   }
   
   # Do initial spatial filtering with SARA and CDC spatial files.
@@ -509,9 +585,9 @@ for(i in 1:nrow(d)){
 
 # =========================================
 
-# Make bins for variables and sum bin levels
+# Make bins for variables
 
-d_sum = d |> 
+d_bins = d |> 
   sf::st_drop_geometry() |> 
   rowwise() |> 
   # dplyr::mutate(records_in_wb_b = dplyr::case_when(
@@ -520,10 +596,22 @@ d_sum = d |>
   #   records_in_wb / nrow(occ_species[occ_species$Species == Species,]) > 0.66 ~ 3,
   #   T ~ 0
   # )) |> 
+  dplyr::mutate(number_inflows_b = dplyr::case_when(
+    number_inflows <= 5 ~ 1,
+    number_inflows <= 25 ~ 2,
+    number_inflows > 25 ~ 3,
+    T ~ 0
+  )) |> 
   dplyr::mutate(other_ais_in_wb_b = dplyr::case_when(
     other_ais_in_wb <= 3 ~ 0,
     other_ais_in_wb <= 6 ~ -1,
     other_ais_in_wb > 6 ~ -2,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(other_ais_in_wb_b = dplyr::case_when(
+    native_species_in_wb <= 3 ~ 0,
+    native_species_in_wb <= 6 ~ -1,
+    native_species_in_wb > 6 ~ -2,
     T ~ 0
   )) |> 
   dplyr::mutate(sara_in_wb_b = dplyr::case_when(
@@ -531,6 +619,41 @@ d_sum = d |>
     sara_in_wb == 1 ~ 1,
     sara_in_wb == 2 ~ 2,
     sara_in_wb >= 3 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(sara_downstream_b = dplyr::case_when(
+    sara_downstream == 0 ~ 0,
+    sara_downstream == 1 ~ 1,
+    sara_downstream == 2 ~ 2,
+    sara_downstream >= 3 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(COSEWIC_in_wb_b = dplyr::case_when(
+    COSEWIC_in_wb == 0 ~ 0,
+    COSEWIC_in_wb == 1 ~ 1,
+    COSEWIC_in_wb == 2 ~ 2,
+    COSEWIC_in_wb >= 3 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(COSEWIC_downstream_b = dplyr::case_when(
+    COSEWIC_downstream == 0 ~ 0,
+    COSEWIC_downstream == 1 ~ 1,
+    COSEWIC_downstream == 2 ~ 2,
+    COSEWIC_downstream >= 3 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(cdc_listed_in_wb_b = dplyr::case_when(
+    cdc_listed_in_wb == 0 ~ 0,
+    cdc_listed_in_wb == 1 ~ 1,
+    cdc_listed_in_wb == 2 ~ 2,
+    cdc_listed_in_wb >= 3 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(cdc_listed_downstream_b = dplyr::case_when(
+    cdc_listed_downstream == 0 ~ 0,
+    cdc_listed_downstream == 1 ~ 1,
+    cdc_listed_downstream == 2 ~ 2,
+    cdc_listed_downstream >= 3 ~ 3,
     T ~ 0
   )) |> 
   dplyr::mutate(maxent_suitability_b = dplyr::case_when(
@@ -546,58 +669,92 @@ d_sum = d |>
     T ~ 0
   )) |> 
   dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
-  ungroup() |> 
-  tidyr::pivot_longer(cols = c(dplyr::ends_with("_b"),dplyr::contains("Current"))) |> 
-  dplyr::group_by(Region, Species, Waterbody) |> 
-  dplyr::mutate(summed_bins = round(sum(value,na.rm=T),0)) |> 
-  dplyr::ungroup() |> 
-  tidyr::pivot_wider()
+  ungroup()
 
-# Put the "summed_bins" column at the very right-side of the output table.
-d_sum = d_sum |> 
-  dplyr::select(names(d_sum)[names(d_sum) != 'summed_bins'], "summed_bins")
+# Now split variables into their groupings:
+# 1. Introduction (GLM result, number inflows, number outflows)
+# 2. Habitat Suitability (MaxEnt prediction)
+# 3. Consequences (presence of SARA, COSEWIC, or CDC listed species either in waterbody
+# or in downstream waterbody)
+
+other_columns = d |> 
+  sf::st_drop_geometry() |> 
+  dplyr::select(Region:Waterbody, new_to_waterbody, oldest_record, first_nations_cons_area_overlapped)
+
+intro = d_bins |> 
+  dplyr::select(Region:Waterbody, number_inflows_b)
+
+hab_suit = d_bins |> 
+  dplyr::select(Region:Waterbody, wb_maxent_suitability, wb_maxent_training_AUC, maxent_suitability_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
+
+conseq = d_bins |> 
+  dplyr::select(Region:Waterbody, sara_in_wb:other_ais_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b,oldest_record_b)
+
+dat_l = list(other_columns, intro, hab_suit, conseq)
+names(dat_l) = c('other_columns', 'intro', 'hab_suit', 'conseq') 
+
+results = purrr::map2(dat_l,names(dat_l), ~ {
+
+  binned_cols = names(.x)[stringr::str_detect(names(.x), "_b$")]
+  all_other_cols = names(.x)[!names(.x) %in% binned_cols]
+  number_cols = length(binned_cols)
+  
+  if(number_cols > 0){
+    result = .x |> 
+      tidyr::pivot_longer(cols = -all_other_cols) |> 
+      dplyr::group_by(Region,Species,Waterbody) |> 
+      dplyr::mutate(!!rlang::sym(paste0(.y,"_total")) := sum(value,na.rm=T) / number_cols) |> 
+      dplyr::ungroup() |> 
+      tidyr::pivot_wider()
+    
+    result = result |> dplyr::select(names(result)[names(result) != paste0(.y,"_total")], paste0(.y,"_total"))
+  } else {
+    result = .x
+  }
+}) |> 
+  purrr::reduce(dplyr::left_join)
 
 # Modify columns that will be hyperlinks
-for(i in 1:nrow(d_sum)){
+for(i in 1:nrow(results)){
   
-  the_species = d_sum[i,]$Species
+  the_species = results[i,]$Species
   the_species_snake = snakecase::to_snake_case(the_species)
   species_folder = paste0(output_folder,the_species_snake,"/")
   # Temporary fix for pumpkinseed sunfish... will have to figure this out.
   species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
   
   # Link Species column to MaxEnt folder.
-  d_sum[i,]$Species = paste0(
+  results[i,]$Species = paste0(
         "HYPERLINK(\"",
         species_folder,
         "\", \"",
-        d_sum[i,]$Species,
+        results[i,]$Species,
         "\")"
       )
 }
 
 
-# Make column names nicer.
-d_sum = d_sum |> 
-  dplyr::rename(
-    `Total Records` = records_in_wb,
-    `Other AIS in WB` = other_ais_in_wb,
-    `Other AIS in WB names` = other_ais_in_wb_names,
-    `New to Waterbody` = new_to_waterbody,
-    `Oldest Record` = oldest_record,
-    `Distinct SARA in WB` = sara_in_wb,
-    `Distinct SARA in WB names` = sara_in_wb_names,
-    `CDC-listed species in WB` = cdc_listed_in_wb,
-    `CDC-listed species in WB names` = cdc_listed_in_wb_names,
-    `MaxEnt Habitat Suitability` = wb_maxent_suitability,
-    `MaxEnt Model Performance` = wb_maxent_training_AUC,
-    `First Nations Consultation Areas` = first_nations_cons_area_overlapped
-  )
+# # Make column names nicer.
+# results = results |> 
+#   dplyr::rename(
+#     # `Total Records` = records_in_wb,
+#     `Other AIS in WB` = other_ais_in_wb,
+#     `Other AIS in WB names` = other_ais_in_wb_names,
+#     `New to Waterbody` = new_to_waterbody,
+#     `Oldest Record` = oldest_record,
+#     `Distinct SARA in WB` = sara_in_wb,
+#     `Distinct SARA in WB names` = sara_in_wb_names,
+#     `CDC-listed species in WB` = cdc_listed_in_wb,
+#     `CDC-listed species in WB names` = cdc_listed_in_wb_names,
+#     `MaxEnt Habitat Suitability` = wb_maxent_suitability,
+#     `MaxEnt Model Performance` = wb_maxent_training_AUC,
+#     `First Nations Consultation Areas` = first_nations_cons_area_overlapped
+#   )
 # =========================================
 
 # specify column as formula per openxlsx::writeFormula option #2
-class(d_sum$Species) <- "formula"
-class(d_sum$wb_maxent_suitability_fig) <- "formula"
+class(results$Species) <- "formula"
+class(results$wb_maxent_suitability_fig) <- "formula"
 
 # Create excel workbook
 my_wb = createWorkbook()
@@ -606,19 +763,31 @@ my_wb = createWorkbook()
 openxlsx::addWorksheet(my_wb, "model")
 
 # Add data to worksheet.
-openxlsx::writeData(my_wb, "model", d_sum)
+openxlsx::writeData(my_wb, "model", results)
 
 red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour = '#bdf0e6')
 blue_text = openxlsx::createStyle(fontColour = 'blue', fontSize = 12)
+green_fill = openxlsx::createStyle(fgFill = "#abe0b9")
+yellow_fill = openxlsx::createStyle(fgFill = "#ede695")
+purple_fill = openxlsx::createStyle(fgFill = "#d96aca")
 
-openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="summed_bins"))
-openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="Species"))
-openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(d_sum))), cols = which(names(d_sum)=="wb_maxent_suitability_fig"))
+openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="summed_bins"))
+openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="Species"))
+openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="wb_maxent_suitability_fig"))
 
-openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(d_sum), widths = "auto")
-openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == "Species"), widths = 20)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == "First Nations Consultation Areas"), widths = 30)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(d_sum) == 'Other AIS in WB names'), widths = 40)
+c(names(intro)[-c(1:3)],'intro_total') |>
+  lapply(\(x) openxlsx::addStyle(my_wb, "model", style = green_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
+
+c(names(hab_suit)[-c(1:3)],'hab_suit_total') |>
+  lapply(\(x) openxlsx::addStyle(my_wb, "model", style = yellow_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
+
+c(names(conseq)[-c(1:3)],'conseq_total') |>
+  lapply(\(x) openxlsx::addStyle(my_wb, "model", style = purple_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
+
+openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(results), widths = "auto")
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "Species"), widths = 20)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "First Nations Consultation Areas"), widths = 30)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'Other AIS in WB names'), widths = 40)
 
 # Add metadata.
 openxlsx::addWorksheet(my_wb, "metadata")
