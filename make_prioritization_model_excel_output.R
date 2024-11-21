@@ -213,7 +213,7 @@ federal_risk_registry_tbl = tidyr::as_tibble(read.csv("../SAR_scraper/output/ris
   
 cosewic_risk_status_sp = federal_risk_registry_tbl |> 
   dplyr::filter(COSEWIC.status %in% c("Endangered","Special Concern","Threatened")) |>
-  dplyr::filter(COSEWIC.status %in% c("","No Status")) |> 
+  dplyr::filter(!COSEWIC.status %in% c("","No Status")) |> 
   dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
   dplyr::select(COSEWIC.common.name) |> 
   dplyr::filter(!COSEWIC.common.name %in% c("White Sturgeon")) |> 
@@ -258,7 +258,7 @@ d$other_ais_in_wb_names = NA
 # polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
 # data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
 # etc. It fills in all the variables we initialize above.
-for(i in 6:nrow(unique_wbs)){
+for(i in 1:nrow(unique_wbs)){
   
   the_wb = unique_wbs[i,]
   
@@ -312,7 +312,7 @@ for(i in 6:nrow(unique_wbs)){
     }
     # Some big edge cases: 
     
-    # 1. Is the downstream either the Columbia River?
+    # 1. Is the downstream the Columbia River?
     # Since it dips out of BC, then back in, things get very complicated, and 
     # lakes that seem implicated perhaps should not be; in this case, just take
     # the Columbia River, trim it to 5 km, and be done with it!
@@ -340,7 +340,8 @@ for(i in 6:nrow(unique_wbs)){
       wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |> 
         dplyr::summarise() |> 
         dplyr::mutate(Waterbody = 'Okanagan_Lake_System') |> 
-        dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+        dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000") |> 
+        sf::st_transform(4326)
       
       ds_lake = wbs
     } else {
@@ -377,6 +378,7 @@ for(i in 6:nrow(unique_wbs)){
   # and native species. This looks only for taxa labelled "fishes","Actinopterygii", and "Mollusca",
   # but you can add more taxa if desired.
   species_in_wb = bcinvadeR::find_all_species_in_waterbody(wb = sf::st_transform(the_wb,3005))
+  
   # Same for downstream waterbody, unless there is none, as in the case of the Thompson-Okanagan string of lakes, which
   # we are treating as a single, connected unit.
   if(nrow(ds_wb) == 0){
@@ -403,11 +405,16 @@ for(i in 6:nrow(unique_wbs)){
   cosewic_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% cosewic_risk_status_sp])
   sara_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% sara_sp])
   
+  # Remove things from cosewic that are present in sara.
+  cosewic_sp_in_wb = cosewic_sp_in_wb[!cosewic_sp_in_wb %in% sara_sp_in_wb]
+  
   # Same for downstream.
   # native_sp_in_ds_wb = unique(unique_species_in_ds_wb[!unique_species_in_ds_wb %in% str_to_title(pr_sp$name)]
   # ais_in_ds_wb = unique_species_in_ds_wb[unique_species_in_ds_wb %in% str_to_title(pr_sp$name)]
   cosewic_sp_in_ds_wb = unique(unique_species_in_ds_wb[unique_species_in_ds_wb %in% cosewic_risk_status_sp])
   sara_sp_in_ds_wb = unique(unique_species_in_ds_wb[unique_species_in_ds_wb %in% sara_sp])
+  
+  cosewic_sp_in_ds_wb = cosewic_sp_in_ds_wb[!cosewic_sp_in_ds_wb %in% sara_sp_in_ds_wb]
   
   # Now find all rows in our dataframe that have this waterbody as their target.
   # For each one, count up the above species groupings.
@@ -415,14 +422,20 @@ for(i in 6:nrow(unique_wbs)){
     # Ensure this gets applied to the right rows in d.
  
     # Add on AIS and Native species
-    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb))
-    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb) > 0, paste0(ais_in_wb, collapse = ", "), NA)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb[ais_in_wb != d[i,]$Species]))
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb[ais_in_wb != d[i,]$Species]) > 0, paste0(ais_in_wb[ais_in_wb != the_species], collapse = ", "), NA)
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$native_species_in_wb = length(unique(native_sp_in_wb))
+    d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$native_species_in_wb_names = ifelse(length(native_sp_in_wb) > 0, paste0(native_sp_in_wb, collapse = ", "), NA)
     
     # Combine sara spatial overlaps with point data that is of a SARA-listed species name.
     sara_combo = unique(c(unique(sara_sp_in_wb),sara_polys_in_wb$Common_Name_EN))
     sara_combo_ds = unique(c(unique(sara_sp_in_ds_wb),sara_polys_in_ds_wb$Common_Name_EN))
     
     # CDC names. Make sure SARA and COSEWIC names aren't present here.
+    # Drop anything in parentheses for cdc polys.
+    cdc_polys_in_wb = cdc_polys_in_wb |> dplyr::mutate(ENG_NAME = stringr::str_remove_all(ENG_NAME," \\(.*\\)"))
+    cdc_polys_in_ds_wb = cdc_polys_in_ds_wb |> dplyr::mutate(ENG_NAME = stringr::str_remove_all(ENG_NAME," \\(.*\\)"))
+    
     cdc_in_wb = unique(cdc_polys_in_wb$ENG_NAME)
     cdc_in_wb = cdc_in_wb[!cdc_in_wb %in% sara_sp]
     cdc_in_wb = cdc_in_wb[!cdc_in_wb %in% cosewic_risk_status_sp]
@@ -450,11 +463,15 @@ for(i in 6:nrow(unique_wbs)){
 }
 
 # Snag the predictions_r object from each element of the list.
-d$wb_maxent_suitability = 0
+d$wb_maxent_suitability_mean = 0
+d$wb_maxent_suitability_median = 0
+d$wb_maxent_suitability_max = 0
 d$wb_maxent_training_AUC = 0
 d$wb_maxent_suitability_fig = "need link"
 
 for(i in 1:nrow(d)){
+  
+  print(i)
   
   the_species = d[i,]$Species
   the_species_snake = snakecase::to_snake_case(the_species)
@@ -465,32 +482,54 @@ for(i in 1:nrow(d)){
   # Read maxent results in for species
   the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
 
-  # Pull out average values for the waterbody.
-  mean_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'mean', na.rm = T)
-  # Is Median better??
-  median_pred_val = terra::extract(the_pred_r, terra::vect(d[i,]$geometry), 'median', na.rm = T)
+  the_pred_about_wb = terra::crop(the_pred_r, sf::st_buffer(d[i,], 5000))
   
-  d[i,]$wb_maxent_suitability = round(mean_pred_val[1,2],3)
+  the_pred_about_wb_poly = sf::st_as_sf(terra::as.polygons(the_pred_about_wb, round = FALSE))
+  
+  raster_var_name = names(the_pred_about_wb_poly)[1]
+  
+  ggplot() +
+    geom_sf(data = the_pred_about_wb_poly,aes(fill = !!rlang::sym(raster_var_name))) +
+    geom_sf(data = d[i,], col = 'red', fill = 'transparent')
+  
+  # Do overlap.
+  summary_values = the_pred_about_wb_poly |> 
+    sf::st_filter(d[i,]) |> 
+    sf::st_drop_geometry() |> 
+    dplyr::summarise(mean_val = mean(!!rlang::sym(raster_var_name)),
+                     median_val = median(!!rlang::sym(raster_var_name)),
+                     max_val = max(!!rlang::sym(raster_var_name)))
+  
+  # Pull out average values for the waterbody.
+  mean_pred_val = summary_values$mean_val
+  median_pred_val = summary_values$median_val
+  max_pred_val = summary_values$max_val
+  
+  d[i,]$wb_maxent_suitability_mean = round(mean_pred_val,3)
+  d[i,]$wb_maxent_suitability_median = round(median_pred_val,3)
+  d[i,]$wb_maxent_suitability_max = round(max_pred_val,3)
   
   maxent_key_metrics = read.csv(paste0(species_folder,"MaxEnt_key_metrics.csv"))
   
   d[i,]$wb_maxent_training_AUC = maxent_key_metrics[maxent_key_metrics$metric == "training_auc",]$value
   
-  the_wb = wbs[wbs$wb_name == d[i,]$Waterbody,]
+  the_wb = d[i,]
   
-  backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+  # backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+  # backdrop = terra::rast(paste0(species_folder,""))
+  # terra::plot(the_pred_r)
+  # terra::plot(terra::rast(backdrop_path))
   
   backdrop = ggplot() + 
-    geom_image(aes(x=1,y=1,image = backdrop_path), size = 1) + 
+    ggimage::geom_image(aes(x=1,y=1,image = backdrop_path), size = 1) +
+    # tidyterra::geom_spatraster(data = the_pred_r) +
     theme(axis.text = element_blank())
   
-  the_pred_for_wb_r = terra::crop(the_pred_r, terra::vect(sf::st_buffer(d[i,]$geometry,5000)))
-  
   inset = ggplot() + 
-    tidyterra::geom_spatraster(data = the_pred_for_wb_r) + 
+    tidyterra::geom_spatraster(data = the_pred_about_wb, aes(fill = !!rlang::sym(raster_var_name))) + 
     geom_sf(data = d[i,], col = 'red', fill = 'transparent') + 
     ggthemes::theme_map() + 
-    scale_fill_viridis_c() +
+    scale_fill_viridis_c(limits = c(0,1)) +
     labs(fill = 'Predicted\nSuitability') + 
     coord_sf(expand = F) +
     theme(legend.position = 'none',
@@ -531,6 +570,41 @@ for(i in 1:nrow(d)){
   d[i,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
 }
 
+d$wildlife_habitat_areas = 0
+d$wildlife_habitat_areas_hectares = NA
+
+# Wildlife Habitat Areas (GAR)
+for(i in 1:nrow(d)){
+  
+  print(i)
+  
+  wb_in_albers = sf::st_buffer(sf::st_transform(d[i,], 3005),1000)
+
+  wha_touching_wb = bcdata::bcdc_query_geodata("wildlife-habitat-areas-approved") |> 
+    bcdata::filter(bcdata::INTERSECTS(wb_in_albers)) |> 
+    bcdata::collect()
+  
+  d[i,]$wildlife_habitat_areas = nrow(wha_touching_wb)
+  d[i,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
+  
+}
+
+# Introduction risk!
+intro_risk = terra::rast(paste0(onedrive_wd,"raster/introduction_risk_prediction.tif"))
+
+# Get average introduction risk for all pixels
+d$introduction_risk_mean = 0
+
+for(i in 1:nrow(d)){
+  
+  # Pull out average values for the waterbody.
+  mean_pred_val = terra::extract(intro_risk, terra::vect(d[i,]$geometry), 'mean', na.rm = T)
+  # Is Median better??
+  median_pred_val = terra::extract(intro_risk, terra::vect(d[i,]$geometry), 'median', na.rm = T)
+  
+  d[i,]$introduction_risk_mean = round(mean_pred_val[1,2],3)
+  
+}
 # =========================================
 
 # Make bins for variables
@@ -616,6 +690,12 @@ d_bins = d |>
     wb_maxent_training_AUC < 0.8 ~ 3,
     T ~ 0
   )) |> 
+  dplyr::mutate(introduction_risk_b = dplyr::case_when(
+    introduction_risk_mean <= 0 ~ 1,
+    wb_maxent_suitability <= 4 ~ 2,
+    wb_maxent_suitability > 4 ~ 3,
+    T ~ 0
+  )) |>
   dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
   ungroup()
 
@@ -627,16 +707,17 @@ d_bins = d |>
 
 other_columns = d |> 
   sf::st_drop_geometry() |> 
-  dplyr::select(Region:Waterbody, new_to_waterbody, oldest_record, first_nations_cons_area_overlapped)
+  dplyr::select(Region:Established_in_Waterbody, new_to_waterbody, oldest_record, oldest_record_b, first_nations_cons_area_overlapped, 
+                wildlife_habitat_areas, wildlife_habitat_areas_hectares)
 
 intro = d_bins |> 
-  dplyr::select(Region:Waterbody, number_inflows_b)
+  dplyr::select(Region:Established_in_Waterbody, number_inflows_b, introduction_risk_b)
 
 hab_suit = d_bins |> 
-  dplyr::select(Region:Waterbody, wb_maxent_suitability, wb_maxent_training_AUC, maxent_suitability_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
+  dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability, wb_maxent_training_AUC, maxent_suitability_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
 
 conseq = d_bins |> 
-  dplyr::select(Region:Waterbody, sara_in_wb:other_ais_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b,oldest_record_b)
+  dplyr::select(Region:Established_in_Waterbody, sara_in_wb:other_ais_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b)
 
 dat_l = list(other_columns, intro, hab_suit, conseq)
 names(dat_l) = c('other_columns', 'intro', 'hab_suit', 'conseq') 
@@ -682,7 +763,7 @@ for(i in 1:nrow(results)){
 }
 
 # Add an overall summary column
-results$priority_b = results$intro_total + results$hab_suit_total + reuslts$conseq_total
+results$priority_b = results$intro_total + results$hab_suit_total + results$conseq_total
 
 # # Make column names nicer.
 # results = results |> 
@@ -717,6 +798,7 @@ openxlsx::writeData(my_wb, "model", results)
 
 red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour = '#bdf0e6')
 blue_text = openxlsx::createStyle(fontColour = 'blue', fontSize = 12)
+
 green_fill = openxlsx::createStyle(fgFill = "#abe0b9")
 yellow_fill = openxlsx::createStyle(fgFill = "#ede695")
 purple_fill = openxlsx::createStyle(fgFill = "#d96aca")
@@ -736,8 +818,9 @@ c(names(conseq)[-c(1:3)],'conseq_total') |>
 
 openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(results), widths = "auto")
 openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "Species"), widths = 20)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "First Nations Consultation Areas"), widths = 20)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'Other AIS in WB names'), widths = 20)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "first_nations_cons_area_overlapped"), widths = 30)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'other_ais_in_wb_names'), widths = 20)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'native_species_in_wb_names'), widths = 30)
 
 # Add metadata.
 openxlsx::addWorksheet(my_wb, "metadata")
