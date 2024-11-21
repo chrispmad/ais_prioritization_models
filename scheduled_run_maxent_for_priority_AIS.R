@@ -28,6 +28,7 @@ bc = bcmaps::bc_bound() |> dplyr::summarise() |> sf::st_transform(4326) |> terra
 
 source("scripts/utils/prep_predictor_data_f.R")
 source("scripts/utils/run_maxent_f.R")
+source("scripts/utils/gather_AIS_data.R")
 
 file.copy(
     from = paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/Master Incidence Report Records.xlsx"),
@@ -44,78 +45,78 @@ predictor_var_matrix = read_excel("inputs_for_prioritization_model.xlsx",
 
 output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
 
-# list of invasive species on our watch list.
-pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
-                           skip = 20)
-names(pr_sp) <- c("group","status","name","genus","species")
-# Just for our species of interest.
-pr_sp = pr_sp |>
-  dplyr::filter(group == 'Fish' | name %in% c("Whirling disease") | stringr::str_detect(name, '(mussel|crayfish|mystery snail|mudsnail|clam|jellyfish|shrimp|waterflea)')) |> 
-  # Split out grouped species names into separate rows.
-  dplyr::mutate(name = stringr::str_squish(name)) |>
-  dplyr::filter(name != 'Bullhead') |>
-  dplyr::arrange(name) |> 
-  # Add a couple alternate ways of spelling species common names.
-  dplyr::bind_rows(
-    tidyr::tibble(
-      group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
-                'Other invertebrates','Other invertebrates','Other invertebrates',
-                'Fish','Fish'),
-      status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
-                 'Provincial Containment','Provincial Containment','Provincial Containment','Management',
-                 'Prevent'),
-      name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
-               'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
-               'Mosquitofish'),
-      genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
-                'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
-      species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
-                  'fluminea','fluminea','fluminea','vitreus','affinis')
-    )
-  )
-
-# Ensure species' common names are Sentence case.
-pr_sp$name = stringr::str_to_sentence(pr_sp$name)
-
-# Do record search for all species of interest! This takes a minute.
-occ_dat_search_results = pr_sp$name |>
-  lapply(\(x) {
-    tryCatch(bcinvadeR::grab_aq_occ_data(x, 
-                                         excel_path = paste0(getwd(),"/data/Master Incidence Report Records.xlsx")),
-                       error=function(e)return(NULL))
-    })
-
-occ_dat_res_b = dplyr::bind_rows(occ_dat_search_results)
-
-occ_dat_res_b = dplyr::mutate(occ_dat_res_b, Species = stringr::str_to_sentence(Species))
-
-# Just include records that had coordinates within BC's bounding box.
-occ_dat_res_b = occ_dat_res_b |>
-  sf::st_transform(3005) |>
-  sf::st_filter(sf::st_as_sfc(sf::st_bbox(dplyr::summarise(bcmaps::bc_bound())))) |>
-  sf::st_transform(4326)
-
-# For species with multiple common names, homogenize the names to fit whatever
-# is present in 'priority_species_table.xlsx' file.
-occ_dat_res_b = occ_dat_res_b |>
-  dplyr::mutate(Species = dplyr::case_when(
-    Species == 'Oriental weatherfish' ~ 'Oriental weather loach',
-    Species == 'Fathead minnow' ~ 'Rosy red fathead minnow',
-    Species == 'Mosquitofish' ~ 'Western mosquitofish',
-    Species == 'Pumpkinseed' ~ 'Pumpkinseed sunfish',
-    Species == 'Common freshwater jellyfish' ~ 'Freshwater jellyfish',
-    Species == 'Bluegill' ~ 'Bluegill sunfish',
-    Species == 'Yellow pickerel' ~ 'Walleye',
-    Species %in% c("Asiatic clam","Golden clam","Good luck clam") ~ 'Asian clam',
-    Species %in% c("Carp","European Carp","Common Carp") ~ "Common carp",
-    T ~ Species
-  ))
-
-# In case we've picked up some Asian Carp or other species that
-# we might not actually want because they're not (yet?) in BC, drop those.
-occ_dat_res_b = occ_dat_res_b |>
-  dplyr::filter(!Species %in% c("Asian Carp","Grass Carp","Silver Carp","Black Carp",
-                                "Bighead Carp"))
+# # list of invasive species on our watch list.
+# pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
+#                            skip = 20)
+# names(pr_sp) <- c("group","status","name","genus","species")
+# # Just for our species of interest.
+# pr_sp = pr_sp |>
+#   dplyr::filter(group == 'Fish' | name %in% c("Whirling disease") | stringr::str_detect(name, '(mussel|crayfish|mystery snail|mudsnail|clam|jellyfish|shrimp|waterflea)')) |> 
+#   # Split out grouped species names into separate rows.
+#   dplyr::mutate(name = stringr::str_squish(name)) |>
+#   dplyr::filter(name != 'Bullhead') |>
+#   dplyr::arrange(name) |> 
+#   # Add a couple alternate ways of spelling species common names.
+#   dplyr::bind_rows(
+#     tidyr::tibble(
+#       group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
+#                 'Other invertebrates','Other invertebrates','Other invertebrates',
+#                 'Fish','Fish'),
+#       status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
+#                  'Provincial Containment','Provincial Containment','Provincial Containment','Management',
+#                  'Prevent'),
+#       name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
+#                'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
+#                'Mosquitofish'),
+#       genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
+#                 'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
+#       species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
+#                   'fluminea','fluminea','fluminea','vitreus','affinis')
+#     )
+#   )
+# 
+# # Ensure species' common names are Sentence case.
+# pr_sp$name = stringr::str_to_sentence(pr_sp$name)
+# 
+# # Do record search for all species of interest! This takes a minute.
+# occ_dat_search_results = pr_sp$name |>
+#   lapply(\(x) {
+#     tryCatch(bcinvadeR::grab_aq_occ_data(x, 
+#                                          excel_path = paste0(getwd(),"/data/Master Incidence Report Records.xlsx")),
+#                        error=function(e)return(NULL))
+#     })
+# 
+# occ_dat_res_b = dplyr::bind_rows(occ_dat_search_results)
+# 
+# occ_dat_res_b = dplyr::mutate(occ_dat_res_b, Species = stringr::str_to_sentence(Species))
+# 
+# # Just include records that had coordinates within BC's bounding box.
+# occ_dat_res_b = occ_dat_res_b |>
+#   sf::st_transform(3005) |>
+#   sf::st_filter(sf::st_as_sfc(sf::st_bbox(dplyr::summarise(bcmaps::bc_bound())))) |>
+#   sf::st_transform(4326)
+# 
+# # For species with multiple common names, homogenize the names to fit whatever
+# # is present in 'priority_species_table.xlsx' file.
+# occ_dat_res_b = occ_dat_res_b |>
+#   dplyr::mutate(Species = dplyr::case_when(
+#     Species == 'Oriental weatherfish' ~ 'Oriental weather loach',
+#     Species == 'Fathead minnow' ~ 'Rosy red fathead minnow',
+#     Species == 'Mosquitofish' ~ 'Western mosquitofish',
+#     Species == 'Pumpkinseed' ~ 'Pumpkinseed sunfish',
+#     Species == 'Common freshwater jellyfish' ~ 'Freshwater jellyfish',
+#     Species == 'Bluegill' ~ 'Bluegill sunfish',
+#     Species == 'Yellow pickerel' ~ 'Walleye',
+#     Species %in% c("Asiatic clam","Golden clam","Good luck clam") ~ 'Asian clam',
+#     Species %in% c("Carp","European Carp","Common Carp") ~ "Common carp",
+#     T ~ Species
+#   ))
+# 
+# # In case we've picked up some Asian Carp or other species that
+# # we might not actually want because they're not (yet?) in BC, drop those.
+# occ_dat_res_b = occ_dat_res_b |>
+#   dplyr::filter(!Species %in% c("Asian Carp","Grass Carp","Silver Carp","Black Carp",
+#                                 "Bighead Carp"))
 
 # pr_sp |> 
 #   dplyr::select(name) |> 
@@ -130,6 +131,16 @@ occ_dat_res_b = occ_dat_res_b |>
 # Filter away occurrence records for species that are in the "Prevent" category,
 # for now? Might change this if we are going to use NA-scale MaxEnt run to predict
 # suitable habitat within BC.
+
+# # Save this to Onedrive so we can use it for multiple projects.
+# occ_dat_res_b |> 
+#   dplyr::left_join(pr_sp |> dplyr::rename(Species = name) |> dplyr::select(Species, status)) |> 
+#   sf::write_sf(paste0(onedrive_wd,"invasive_species_records_2024-11-20.gpkg"))
+
+pr_sp = gather_ais_data(data = 'species list', lan_root = lan_root, onedrive_wd = onedrive_wd)
+
+occ_dat_res_b = gather_ais_data(data = 'occurrences', redo = T, lan_root = lan_root, onedrive_wd = onedrive_wd)
+
 occ_dat_res_f = occ_dat_res_b |> 
   dplyr::filter(Species %in% pr_sp[pr_sp$status != "Prevent",]$name)
 
@@ -183,7 +194,7 @@ for(i in 1:length(unique_sp)){
           onedrive_path = onedrive_wd,
           number_pseudoabsences = 10000,
           output_folder = output_folder,
-          feature_classes = c("L","LQ"),
+          feature_classes = c("LQ"),
           regularisation_levels = c(1:5)
         ),
         error = function(e) NULL

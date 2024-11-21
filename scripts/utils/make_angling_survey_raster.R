@@ -7,6 +7,7 @@ library(exactextractr)
 
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/CNF/")
+lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
 
 bc_vect = terra::vect(sf::st_transform(bcmaps::bc_bound(),4326))
 
@@ -15,37 +16,37 @@ ref = terra::rast(paste0(onedrive_wd, "reference_raster_wgs84.tif"))
 # Rob Paynter has shared this DFO survey data with us.
 
 if(!file.exists("data/question_10_from_2023_DFO_angler_survey.rds")){
-dfo_survey_filepaths = list.files(path = onedrive_wd,
-           pattern = "set_DFO",
-           full.names = T)
-
-dfo_surveys = lapply(dfo_survey_filepaths, openxlsx::read.xlsx)
-
-#Reading in thwe excel files takes a lot of RAM; saving as RDS files.
-survey_2023 = dfo_surveys[[1]]
-survey_2024 = dfo_surveys[[2]]
-rm(dfo_surveys)
-
-# These surveys have a ridiculous number of columns. Ugh.
-# We just care about question X ( ).
-# Q5 is which months were they active.
-# Q7 is how many days fishing during active months
-# Q10 is the number of days fished by waterbody / "area"
-
-days_per_wb = survey_2023 |> 
-  # Grab the metadata columns and also the responses to question 10.
-  dplyr::select(ID:NOTES,dplyr::contains("Q10A")) |> 
-  tidyr::as_tibble() |> 
-  dplyr::select(ID,DATE,dplyr::contains("Q10A")) |> 
-  dplyr::mutate(across(everything(), as.character)) |> 
-  tidyr::pivot_longer(cols = -c(ID,DATE)) |> 
-  dplyr::filter(!is.na(value)) |> 
-  dplyr::mutate(name = stringr::str_remove(name, "\\.[0-9]+$"))
-
-saveRDS(days_per_wb, "data/question_10_from_2023_DFO_angler_survey.rds")
-
-# Not sure exactly how to parse the 2024 survey: it has a different list of 
-# questions from the 2023 survey.
+  dfo_survey_filepaths = list.files(path = onedrive_wd,
+                                    pattern = "set_DFO",
+                                    full.names = T)
+  
+  dfo_surveys = lapply(dfo_survey_filepaths, openxlsx::read.xlsx)
+  
+  #Reading in thwe excel files takes a lot of RAM; saving as RDS files.
+  survey_2023 = dfo_surveys[[1]]
+  survey_2024 = dfo_surveys[[2]]
+  rm(dfo_surveys)
+  
+  # These surveys have a ridiculous number of columns. Ugh.
+  # We just care about question X ( ).
+  # Q5 is which months were they active.
+  # Q7 is how many days fishing during active months
+  # Q10 is the number of days fished by waterbody / "area"
+  
+  days_per_wb = survey_2023 |> 
+    # Grab the metadata columns and also the responses to question 10.
+    dplyr::select(ID:NOTES,dplyr::contains("Q10A")) |> 
+    tidyr::as_tibble() |> 
+    dplyr::select(ID,DATE,dplyr::contains("Q10A")) |> 
+    dplyr::mutate(across(everything(), as.character)) |> 
+    tidyr::pivot_longer(cols = -c(ID,DATE)) |> 
+    dplyr::filter(!is.na(value)) |> 
+    dplyr::mutate(name = stringr::str_remove(name, "\\.[0-9]+$"))
+  
+  saveRDS(days_per_wb, "data/question_10_from_2023_DFO_angler_survey.rds")
+  
+  # Not sure exactly how to parse the 2024 survey: it has a different list of 
+  # questions from the 2023 survey.
 } else {
   days_per_wb = readRDS("data/question_10_from_2023_DFO_angler_survey.rds")
 }
@@ -87,7 +88,7 @@ days_per_wb_sum = days_per_wb |>
   # Split rows with multiple waterbodies listed together, separated by a comma, 
   # into new rows.
   tidyr::separate_longer_delim(cols = Waterbody, delim = ', ')
-  
+
 # Ok, now summarise these numbers to water body by name (and region?)
 days_per_wb_sum = days_per_wb_sum |> 
   dplyr::count(GMZ,Waterbody, wt = as.numeric(days_fished), sort = T) |> 
@@ -126,7 +127,7 @@ manage_units = bcdc_query_geodata('wildlife-management-units') |>
 manage_units_by_zone = manage_units |> 
   dplyr::rename(GMZ = GAME_MANAGEMENT_ZONE_ID) |> 
   dplyr::mutate(GMZ = stringr::str_to_upper(GMZ)) |> 
-  dplyr::group_by(GMZ,GAME_MANAGEMENT_ZONE_NAME ) |> 
+  dplyr::group_by(GMZ,GAME_MANAGEMENT_ZONE_NAME) |> 
   dplyr::summarise()
 
 days_per_wb_w_zone = days_per_wb_sum |> 
@@ -144,6 +145,11 @@ fished_lakes_w_sum = fished_lakes_polys_w_zone |>
   dplyr::left_join(days_per_wb_w_zone) |> 
   dplyr::rename(days_fished = n)
 
+# Write out the lake polygons with the number of days fished - we'll use this
+# in the ZQM Prioritization model!
+sf::write_sf(fished_lakes_w_sum,
+             "W:/CMadsen/shared_data_sets/freshwater_fisheries_society_angler_survey_2022_2023.gpkg")
+
 # Time to rasterize this!
 fished_lakes_w_sum_vect = fished_lakes_w_sum |> 
   sf::st_transform(crs = 4326) |> 
@@ -157,6 +163,7 @@ fished_lakes_rast[is.na(fished_lakes_rast)] <- 0
 
 fished_lakes_rast = terra::mask(fished_lakes_rast, ref)
 
+# Write out the raster to the AIS prioritization model folder, to be used in the model!
 terra::writeRaster(fished_lakes_rast, 
                    paste0(onedrive_wd,"DFO_angling_survey_days_fished_raster.tif"),
                    overwrite = TRUE)
