@@ -681,6 +681,8 @@ for(i in 1:nrow(results)){
       )
 }
 
+# Add an overall summary column
+results$priority_b = results$intro_total + results$hab_suit_total + reuslts$conseq_total
 
 # # Make column names nicer.
 # results = results |> 
@@ -719,7 +721,7 @@ green_fill = openxlsx::createStyle(fgFill = "#abe0b9")
 yellow_fill = openxlsx::createStyle(fgFill = "#ede695")
 purple_fill = openxlsx::createStyle(fgFill = "#d96aca")
 
-openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="summed_bins"))
+openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="priority_b"))
 openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="Species"))
 openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="wb_maxent_suitability_fig"))
 
@@ -734,8 +736,8 @@ c(names(conseq)[-c(1:3)],'conseq_total') |>
 
 openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(results), widths = "auto")
 openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "Species"), widths = 20)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "First Nations Consultation Areas"), widths = 30)
-openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'Other AIS in WB names'), widths = 40)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "First Nations Consultation Areas"), widths = 20)
+openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'Other AIS in WB names'), widths = 20)
 
 # Add metadata.
 openxlsx::addWorksheet(my_wb, "metadata")
