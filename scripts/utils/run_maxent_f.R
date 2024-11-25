@@ -18,9 +18,17 @@ run_maxent = function(species,
   
   if(is.data.frame(species)){
     # User fed in dataframe of species occurrences.
-    dat = species |> 
-      dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
-                    y = sf::st_coordinates(geometry)[,2])
+    if('geom' %in% names(species)){
+      dat = species |> 
+        dplyr::mutate(x = sf::st_coordinates(geom)[,1],
+                      y = sf::st_coordinates(geom)[,2]) |> 
+        # Rename geom column to geometry.
+        dplyr::rename(geometry = geom)
+    } else {
+      dat = species |> 
+        dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
+                      y = sf::st_coordinates(geometry)[,2])
+    }
     species_name = dat$Species[1]
   } else {
     if(is.character(species)){
@@ -182,7 +190,7 @@ run_maxent = function(species,
   
   
   presencedat<- dat |> 
-    dplyr::select(x, y, Species, geometry)
+    dplyr::select(x, y, Species)
   
   for(raster_var in unique(names(predictor_data))){
     presencedat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
@@ -255,7 +263,6 @@ run_maxent = function(species,
   ggplot2::ggsave(filename = paste0(output_fn,"pres_bg_boxplot.jpg"),
                   plot = predictor_box,
                   dpi = 300, width = 8, height = 8)
-  
   
   # Make MaxEnt model
   cat("\nMaking MaxEnt Model...")
@@ -363,7 +370,6 @@ run_maxent = function(species,
       plot.subtitle = ggtext::element_markdown(),
       plot.caption = ggtext::element_markdown()
     )
-  # predictions_plot
   
   predictions_plot_blank <- ggplot() +
     tidyterra::geom_spatraster(data = predictions) +
@@ -433,3 +439,4 @@ run_maxent = function(species,
     )
   )
 }
+

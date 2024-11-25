@@ -45,6 +45,27 @@ predictor_var_matrix = read_excel("inputs_for_prioritization_model.xlsx",
 
 output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
 
+# Save plots of the predictor variables.
+names(predictor_data)[names(predictor_data) != 'asian_clam_temperature_limits'] |>
+  lapply(\(x) {
+    
+    var_name = stringr::str_remove_all(x, "(_)?\\(.*\\)")
+    
+    if(!file.exists(paste0(output_folder,"predictor_variable_plots/",var_name,".jpg"))){
+
+      the_plot = ggplot2::ggplot() + 
+        tidyterra::geom_spatraster(data = predictor_data[[x]]) + 
+        ggplot2::labs(fill = var_name) + 
+        ggplot2::scale_fill_viridis_c(option = "D", na.value = NA)+
+        ggplot2::theme_minimal()
+      
+      ggplot2::ggsave(filename = paste0(output_folder,"predictor_variable_plots/",var_name,".jpg"),
+                      plot = the_plot,
+                      dpi = 300, width = 8, height = 8)
+    }
+  })
+
+# Make plots for each of the predictor variables.
 # # list of invasive species on our watch list.
 # pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
 #                            skip = 20)
