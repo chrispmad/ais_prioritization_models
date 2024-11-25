@@ -14,8 +14,12 @@ prep_predictor_data = function(proj_path,
   names(Calc_NAM) <- "calc"
   
   # Pull in distance to road network
-  roads = terra::rast(paste0(onedrive_path,"CNF/distance_to_road_raster.tif"))
+  roads = terra::rast(paste0(onedrive_path,"CNF/distance_to_numbered_highway_raster.tif"))
   names(roads) <- "dist_to_highways"
+  
+  # And paved roads too!
+  roads = terra::rast(paste0(onedrive_path,"CNF/distance_to_paved_road_raster.tif"))
+  names(roads) <- "dist_to_paved_roads"
   
   # Pull in population density raster
   pop_dens = terra::rast(paste0(onedrive_path,"CNF/population_density_raster.tif"))

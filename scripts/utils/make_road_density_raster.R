@@ -24,22 +24,38 @@ big_roads = bcdc_query_geodata('digital-road-atlas-dra-master-partially-attribut
   filter(!is.na(HIGHWAY_ROUTE_NUMBER)) |> 
   collect()
 
+# Bring in roads over a certain size.
+paved_roads = bcdc_query_geodata('digital-road-atlas-dra-master-partially-attributed-roads') |> 
+  # filter(NUMBER_OF_LANES > 4) |> 
+  filter(ROAD_SURFACE == 'paved') |> 
+  collect()
+
 big_roads = sf::st_transform(big_roads, 4326)
+paved_roads = sf::st_transform(paved_roads, 4326)
 
 # count number of roads in each raster cell.
 road_dens_r = terra::rasterize(terra::vect(big_roads), ref)
+paved_road_dens_r = terra::rasterize(terra::vect(paved_roads), ref)
 
 terra::plot(road_dens_r)
+terra::plot(paved_road_dens_r)
 
 # Next, let's measure distance for every cell to the nearest cell with a road present.
 road_dens_r[road_dens_r == 0] <- NA # Convert 0 to NA
+paved_road_dens_r[paved_road_dens_r == 0] <- NA # Convert 0 to NA
 
 road_distance_r <- distance(road_dens_r)
+paved_road_distance_r <- distance(paved_road_dens_r)
 
 # Clip back to BC.
 road_distance_r = terra::mask(road_distance_r, bc_vect)
+paved_road_distance_r = terra::mask(paved_road_distance_r, bc_vect)
 
 terra::plot(road_distance_r)
 terra::plot(road_dens_r, add = T)
 
-terra::writeRaster(x = road_distance_r, filename = paste0(onedrive_wd,"distance_to_road_raster.tif"))
+terra::plot(paved_road_distance_r)
+terra::plot(paved_road_dens_r, add = T)
+
+terra::writeRaster(x = road_distance_r, filename = paste0(onedrive_wd,"distance_to_numbered_highway_raster.tif"))
+terra::writeRaster(x = paved_road_distance_r, filename = paste0(onedrive_wd,"distance_to_paved_road_raster.tif"))
