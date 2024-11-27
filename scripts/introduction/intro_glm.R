@@ -71,8 +71,7 @@ for(raster_var in unique(names(predictor_data))){
 
 
 modelData <- dat |> 
-  dplyr::select(x, y, Species, population_density, TotalInspections, days_fished, dist_to_highways) |> 
-  st_drop_geometry()
+  dplyr::select(x, y, Species, population_density, TotalInspections, days_fished, dist_to_highways) 
 
 modelData$presence<-"Present"
 
@@ -96,8 +95,10 @@ watercourses<-mask(watercourses, extentvect)
 
 # Generate the same number of absences as seen in what we are predicting - see Massin et al. (2012)
 number_pseudoabsences <- nrow(modelData)
-pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(st_as_sf(modelData), coords = c("x", "y"), 4326), n = number_pseudoabsences, extf = 0.9) |> 
+pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(modelData), n = number_pseudoabsences, extf = 0.9) |> 
   as.data.frame()
+
+
 
 for(raster_var in unique(names(predictor_data))){
   pseudoabsences[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
@@ -114,13 +115,16 @@ modelDataAbs <- pseudoabsences %>%
 #   dplyr::mutate(x = sf::st_coordinates(geometry)[,1],
 #                 y = sf::st_coordinates(geometry)[,2]) |> 
 #   dplyr::select(-geometry)
-  
+
+modcrs<-crs(modelData)  
+
+
 
 modelDataAbs$presence<-"Absent"
 modelDataAbs$Species<-"None"
 #names(modelData)[names(modelData) == "geom"] <- "geometry"
 #st_geometry(modelData) <- "geometry"
-totModelData<-bind_rows(modelData, modelDataAbs) 
+totModelData<-bind_rows(st_drop_geometry(modelData), modelDataAbs) 
 
 totModelData<-totModelData[complete.cases(totModelData),]
 
@@ -166,9 +170,11 @@ plot(intersected_grid)
 intersected_grid<-st_as_sf(intersected_grid)
 intersected_grid$id<-1:nrow(intersected_grid)
 
-intersected_grid<-st_transform(intersected_grid, st_crs(modelData))
+intersected_grid<-st_transform(intersected_grid, st_crs(modcrs))
 
-r <- st_join(modelData, intersected_grid, join = st_intersects)
+r <- sf::st_join(modelData, intersected_grid, join = st_intersects)
+
+
 
 point_count<- r |> 
   group_by(id) |> 
@@ -201,7 +207,7 @@ ggplot() +
 
 modDT<-setDT(totModelData)
 #Fix the melt
-melt_dat<-melt(modDT, id.vars = c(1,2,8), measure.vars = c(3:6))
+melt_dat<-melt(modDT, id.vars = c(3,8), measure.vars = c(4:7))
 
 melt_dat$presence <- as.factor(melt_dat$presence)
 
@@ -213,8 +219,8 @@ ggplot(melt_dat, aes(x = as.factor(presence), y = value, fill = variable)) +
   xlab("")+
   theme_minimal()+
   theme(
-    strip.text = element_text(size = 12, face = "bold"), 
-    plot.title = element_text(size = 16, face = "bold", hjust = 0.5), 
+    strip.text = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
     axis.title = element_text(size = 14, face = "bold"),
     axis.text.x = element_text(angle = 90, hjust = 1, face = "bold"),
     legend.position = 'none'
@@ -271,7 +277,7 @@ hist(totModelData$l.dist_to_highways)
 #########################################################################################
 library(lme4)
 
-
+totModelData$presence<-as.factor(totModelData$presence)
 #### Locations were an issue when predicting - goung to round them
 totModelData$location <- paste(round(totModelData$x, digits = 4), round(totModelData$y, digit = 4), sep = "_")
 
@@ -283,15 +289,39 @@ risk_model <- glm(
   data = totModelData,
   family = binomial(link = "logit")
 )
-# https://r.qcbs.ca/workshop06/book-en/binomial-glm.html
 summary(risk_model)
+10^(summary(risk_model)$coefficients)
+
+step(risk_model, test = 'LRT')
+# https://r.qcbs.ca/workshop06/book-en/binomial-glm.html
+
 plot(risk_model)
 
-newData<-data.frame()
 
+# use watercourses raster- save as introduction risk
+introduction_risk = predictor_data[[1]]
 
+predict_rast<-predictor_data
+names(predict_rast) = c("l.population_density", "l.TotalInspections", "l.days_fished", "l.dist_to_highways")
+values(predict_rast)<-log10(values(predict_rast)+10)  
+newData<-terra::as.data.frame(predictor_data, xy= TRUE)
+dodata<-newData[,3:ncol(newData)]
+names(dodata)<-c("l.population_density", "l.TotalInspections", "l.days_fished", "l.dist_to_highways")
+dodata <- dodata |> mutate(across(everything(), \(x) log10(x+10)))
 
+model_predict<-terra::predict( predict_rast, risk_model, na.rm = F)
+model_predict
+introduction_risk$prediction<-model_predict
+plot(introduction_risk$prediction)
+introduction_risk$population_density = NULL
+introduction_risk
 
+# Write out this perhaps shoddy prediction raster to our other data file folder to be used in the 
+# AIS model!
+terra::writeRaster(introduction_risk, paste0(onedrive_path,'raster/introduction_risk_prediction.tif'))
+
+introduction_risk$prediction<-model_predict
+plot(introduction_risk$prediction)
 random_effects<-ranef(risk_model) |> 
   pluck(1) |> 
   rownames_to_column() |> 
@@ -312,4 +342,24 @@ plot(risk_fitted)
 
 ###########################################################################################
 
+library(ENMeval)
 
+pres_xy<- modelData |> 
+  dplyr::select(x,y)
+pseudo<- pseudoabsences |> 
+  dplyr::select(x,y)
+  
+
+me = ENMevaluate(occs = pres_xy,
+                 envs = predictor_data,
+                 bg = pseudo,
+                 algorithm = 'maxent.jar',
+                 partitions = 'block',
+                 tune.args = list(fc = c("L","LQ"),
+                                  rm = c(1:5)))
+me
+me@results
+opt.aicc = eval.results(me) |> dplyr::filter(delta.AICc == 0)
+opt.aicc
+plot(opt.aicc)
+plot(me@predictions[[1]])
