@@ -275,9 +275,12 @@ run_maxent = function(species,
                    tune.args = list(fc = feature_classes,
                                     rm = regularisation_levels))
   
+  
+  
   top5 <- me@results |> 
     filter(!is.na(AICc)) |> 
-    arrange(AICc, delta.AICc, desc(w.AIC)) |> 
+    mutate(auc_cbi_mix = (as.numeric(auc.train) + as.numeric(cbi.train)) / 2) |> 
+    arrange(desc(auc_cbi_mix)) |> 
     slice_head(n = 5)
 
   write.table(top5, paste0(output_fn, "top_5_models.txt"), row.names = F)
