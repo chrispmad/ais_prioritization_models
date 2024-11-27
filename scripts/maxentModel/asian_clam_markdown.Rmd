@@ -27,7 +27,7 @@ library(data.table)
 library(here)
 
 sppOI<-"asian clam"
-regularisation_levels = c(1:5); feature_classes = c("L","LQ","LQH", "LQHPT"); number_pseudoabsences<-1000
+regularisation_levels = c(1:5); feature_classes = c("L","LQ"); number_pseudoabsences<-1000
 # The number of background points to be gnerated
 number_pseudoabsences<-10000
 
@@ -412,12 +412,37 @@ eval.predictions(me)
 ```
 
 
+AUC will tell if the model suitably predicts a presences vs a background point. It ignores the predicted probability values and the goodness of fit of the model. It does not give us information about the spatial distribution of model errors. It also doesn't account for over-fitting. The Boyce index should also be used here. A value close to 1 will indicate a model that prediction are consistent with the distribution of presences. Close to zero, its the same as a random model. Close to -1, counter predictions! (Boyce is cbi.train)
+
+
+
+
 ```{r top_5}
-top5 <- me@results |> 
+### What about the AUC? What difference is acceptable for an increase in model complexity?
+top5auc <- me@results |> 
   filter(!is.na(AICc)) |> 
-  arrange(AICc, delta.AICc, desc(w.AIC)) |> 
+  arrange(desc(auc.train),desc(cbi.train)) |> 
   slice_head(n = 5)
-top5
+top5auc
+
+top5cbi <- me@results |> 
+  filter(!is.na(AICc)) |> 
+  arrange(desc(cbi.train),desc(auc.train)) |> 
+  slice_head(n = 5)
+top5cbi
+
+
+
+res<- eval.results(me)
+
+opt.seq <- res %>% 
+  dplyr::filter(or.10p.avg == min(or.10p.avg)) %>% 
+  dplyr::filter(auc.val.avg == max(auc.val.avg))
+
+topmod<-eval.models(me)[[opt.seq$tune.args]]
+
+plot(topmod)
+
 ```
 
 I have found the models with the lowest AICc. Delta AICc shows the difference between the top model and the others. The wAICc would sum to 1 for all the models. This is a normalised AICc that shows how likely one model is compared to another. 
