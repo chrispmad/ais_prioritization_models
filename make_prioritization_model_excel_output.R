@@ -157,7 +157,7 @@ d = d |>
 #   dplyr::bind_rows()
 
 occ_species = gather_ais_data(data = 'occurrences', lan_root = lan_root,
-                              onedrive_wd = onedrive_wd, redo = F) |> 
+                              onedrive_wd = onedrive_wd, redo = T) |> 
   dplyr::filter(Species %in% unique(d$Species))
 
 # Ensure date is always in this format: YYYY-MM-DD and not in 'excel' format.
@@ -421,6 +421,8 @@ for(i in 1:nrow(unique_wbs)){
   for(y in 1:nrow(d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,])){
     # Ensure this gets applied to the right rows in d.
  
+    the_species = d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$Species
+    
     # Add on AIS and Native species
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb[ais_in_wb != d[i,]$Species]))
     d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb[ais_in_wb != d[i,]$Species]) > 0, paste0(ais_in_wb[ais_in_wb != the_species], collapse = ", "), NA)
@@ -477,7 +479,7 @@ for(i in 1:nrow(d)){
   the_species_snake = snakecase::to_snake_case(the_species)
   species_folder = paste0(output_folder,the_species_snake,"/")
   # Temporary fix for pumpkinseed sunfish... will have to figure this out.
-  species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
+  # species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
   
   # Read maxent results in for species
   the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
@@ -515,7 +517,7 @@ for(i in 1:nrow(d)){
   
   the_wb = d[i,]
   
-  # backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+  backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
   # backdrop = terra::rast(paste0(species_folder,""))
   # terra::plot(the_pred_r)
   # terra::plot(terra::rast(backdrop_path))
@@ -590,7 +592,7 @@ for(i in 1:nrow(d)){
 }
 
 # Introduction risk!
-intro_risk = terra::rast(paste0(onedrive_wd,"raster/introduction_risk_prediction.tif"))
+intro_risk = terra::rast(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/introduction_risk.tif"))
 
 # Get average introduction risk for all pixels
 d$introduction_risk_mean = 0
@@ -678,10 +680,16 @@ d_bins = d |>
     cdc_listed_downstream >= 3 ~ 3,
     T ~ 0
   )) |> 
-  dplyr::mutate(maxent_suitability_b = dplyr::case_when(
-    wb_maxent_suitability <= 0.33 ~ 1,
-    wb_maxent_suitability <= 0.66 ~ 2,
-    wb_maxent_suitability > 0.66 ~ 3,
+  dplyr::mutate(maxent_suitability_max_b = dplyr::case_when(
+    wb_maxent_suitability_max <= 0.33 ~ 1,
+    wb_maxent_suitability_max <= 0.66 ~ 2,
+    wb_maxent_suitability_max > 0.66 ~ 3,
+    T ~ 0
+  )) |> 
+  dplyr::mutate(maxent_suitability_mean_b = dplyr::case_when(
+    wb_maxent_suitability_mean <= 0.33 ~ 1,
+    wb_maxent_suitability_mean <= 0.66 ~ 2,
+    wb_maxent_suitability_mean > 0.66 ~ 3,
     T ~ 0
   )) |> 
   dplyr::mutate(m_suit_uncertainty_b = dplyr::case_when(
@@ -692,11 +700,11 @@ d_bins = d |>
   )) |> 
   dplyr::mutate(introduction_risk_b = dplyr::case_when(
     introduction_risk_mean <= 0 ~ 1,
-    wb_maxent_suitability <= 4 ~ 2,
-    wb_maxent_suitability > 4 ~ 3,
+    introduction_risk_mean <= 4 ~ 2,
+    introduction_risk_mean > 4 ~ 3,
     T ~ 0
   )) |>
-  dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
+  # dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3)) |> 
   ungroup()
 
 # Now split variables into their groupings:
@@ -707,14 +715,15 @@ d_bins = d |>
 
 other_columns = d |> 
   sf::st_drop_geometry() |> 
-  dplyr::select(Region:Established_in_Waterbody, new_to_waterbody, oldest_record, oldest_record_b, first_nations_cons_area_overlapped, 
-                wildlife_habitat_areas, wildlife_habitat_areas_hectares)
+  dplyr::select(Region:Established_in_Waterbody, new_to_waterbody, oldest_record,first_nations_cons_area_overlapped, 
+                wildlife_habitat_areas, wildlife_habitat_areas_hectares) |> 
+  dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3))
 
 intro = d_bins |> 
   dplyr::select(Region:Established_in_Waterbody, number_inflows_b, introduction_risk_b)
 
 hab_suit = d_bins |> 
-  dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability, wb_maxent_training_AUC, maxent_suitability_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
+  dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability_max, wb_maxent_suitability_mean, wb_maxent_training_AUC, maxent_suitability_max_b, maxent_suitability_mean_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
 
 conseq = d_bins |> 
   dplyr::select(Region:Established_in_Waterbody, sara_in_wb:other_ais_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b)
