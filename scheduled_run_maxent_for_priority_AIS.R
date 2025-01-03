@@ -99,7 +99,8 @@ for(i in 1:length(unique_sp)){
       past_expiration_date = lubridate::ymd(Sys.Date()) > lubridate::ymd(maxent_metadata$run_date) + lubridate::days(90)
       # 2. Have any additional occurrences been added within BC?
       new_occurrences = nrow(the_sp_occ) > maxent_metadata$number_occurrences
-    }
+      
+      }
     if(past_expiration_date | new_occurrences){
       
       print(paste0("Rerunning maxent for ",the_sp))
