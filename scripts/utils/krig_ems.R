@@ -88,8 +88,8 @@ krig_ems<-function(var_name, confidence_interval = 0.99){
   results_albers_as_centroids = results_albers_overlap |> 
     sf::st_centroid()
   
-  ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col = medianVal))
-  
+  p1<-ggplot() + geom_sf(data = results_albers_as_centroids, aes(fill = medianVal, col = medianVal))
+  ggsave(paste0(filename = "./images/median_",var_name,".png"), plot = p1, dpi = 300)
   #for turbidity
   #results_albers_as_centroids <- results_albers_as_centroids %>% filter(medianVal < 500)
   
