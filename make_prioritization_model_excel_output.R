@@ -254,6 +254,13 @@ d$native_species_in_wb_names = NA
 d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
+
+# Count the trailing zeroes in the waterbody
+count_trailing_zeroes <- function(code) {
+  parts <- unlist(strsplit(code, "-"))
+  count <- sum(parts == "000000")
+  return(count)
+}
 # This loop cycles through the waterbodies, searching for spatial overlaps with
 # polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
 # data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
@@ -266,6 +273,17 @@ for(i in 1:nrow(unique_wbs)){
   
   geom_and_fwa_for_wb = d |> dplyr::filter(Waterbody == the_wb$Waterbody, Region == the_wb$Region) |> 
     dplyr::select(Waterbody,Region,FWA_WATERSHED_CODE,geometry)
+  
+  if(nrow(geom_and_fwa_for_wb) > 1){
+    warning(paste0("More than one waterbody found for: ",the_wb$Waterbody, " ",the_wb$Region),
+            ". The highest order waterbody will be selected.")
+    geom_and_fwa_for_wb<-geom_and_fwa_for_wb |> 
+      rowwise() |> 
+      mutate(trailing_zeroes = count_trailing_zeroes(FWA_WATERSHED_CODE)) |> 
+      ungroup() |> 
+      arrange(desc(trailing_zeroes)) %>%  # Sort descending by trailing zeroes
+      slice(1)                            # Select the first row (highest order)
+  }
   
   the_wb = the_wb |> dplyr::left_join(geom_and_fwa_for_wb, by = join_by(Waterbody, Region))
   
@@ -302,13 +320,13 @@ for(i in 1:nrow(unique_wbs)){
     ds_lakes = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> 
       filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> 
       collect() |> sf::st_transform(4326)
-    
+    #modified, removed summary and added a select
     if(nrow(ds_lakes) > 0){
       ds_lakes = ds_lakes |> 
         dplyr::filter(!is.na(GNIS_NAME_1)) |> 
         dplyr::rename(Waterbody = GNIS_NAME_1) |> 
         dplyr::group_by(Waterbody) |> 
-        dplyr::summarise()
+        dplyr::select(Waterbody, AREA_HA, geometry)
     }
     # Some big edge cases: 
     
@@ -348,13 +366,16 @@ for(i in 1:nrow(unique_wbs)){
       # If there are multiple lakes, take the largest one.
       if(length(unique(ds_lakes$Waterbody)) > 1){
         chosen_lake = ds_lakes |> 
-          dplyr::arrange(dplyr::desc(AREA_HA)) |> 
-          dplyr::slice(1) |> 
-          dplyr::pull(Waterbody)
+          dplyr::ungroup() |>                        
+          dplyr::arrange(dplyr::desc(AREA_HA)) |>    
+          dplyr::slice(1) |>                         
+          dplyr::pull(Waterbody)                    
+        
+        
         ds_lake = ds_lakes |> 
           dplyr::filter(Waterbody == chosen_lake)
       }
-      ds_lake = ds_lakes
+      #ds_lake = ds_lakes
       rm(ds_lakes)
     }
     
@@ -859,3 +880,4 @@ openxlsx::setColWidths(my_wb,"metadata",cols = 2:ncol(metadata), widths = 120)
 
 openxlsx::saveWorkbook(my_wb, file = "output/example_ais_prioritization_results.xlsx",
                        overwrite = T)
+
