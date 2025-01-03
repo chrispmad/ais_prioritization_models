@@ -13,5 +13,5 @@ maxEnt_goldfish_explore_files/figure-html/**
 vect/**
 rasters/**
 *.tif
-*.xlsx
+.xlsx
 /scripts/python/*
