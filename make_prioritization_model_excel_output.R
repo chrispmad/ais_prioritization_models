@@ -118,6 +118,41 @@ wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
   }
 }, .progress = TRUE)
 
+# Count the trailing zeroes in the waterbody
+count_trailing_zeroes <- function(code) {
+  parts <- unlist(strsplit(code, "-"))
+  count <- sum(parts == "000000")
+  return(count)
+}
+
+# Function to filter wbs_list
+filter_wbs_list <- function(wbs_list) {
+  filtered_list <- list()
+  
+  # Iterate through wbs_list
+  for (i in seq_along(wbs_list)) {
+    # Extract the current entry
+    current_sf <- wbs_list[[i]]
+    
+    # Check if there are multiple features for the same wb_name
+    if (nrow(current_sf) > 1) {
+      # Add a column to count trailing zeroes
+      current_sf$trailing_zeroes <- sapply(current_sf$FWA_WATERSHED_CODE, count_trailing_zeroes)
+      
+      # Keep the feature with the most trailing zeroes
+      max_zeroes_index <- which.max(current_sf$trailing_zeroes)
+      filtered_list[[length(filtered_list) + 1]] <- current_sf[max_zeroes_index, ]
+    } else {
+      # Add the current entry if it has a single feature
+      filtered_list[[length(filtered_list) + 1]] <- current_sf
+    }
+  }
+  
+  return(filtered_list)
+}
+
+wbs_list<-filter_wbs_list(wbs_list)
+
 wbs = wbs_list |> 
   dplyr::bind_rows() |> 
   sf::st_transform(4326)
@@ -255,12 +290,9 @@ d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
 
-# Count the trailing zeroes in the waterbody
-count_trailing_zeroes <- function(code) {
-  parts <- unlist(strsplit(code, "-"))
-  count <- sum(parts == "000000")
-  return(count)
-}
+
+
+
 # This loop cycles through the waterbodies, searching for spatial overlaps with
 # polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
 # data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
@@ -375,7 +407,7 @@ for(i in 1:nrow(unique_wbs)){
         ds_lake = ds_lakes |> 
           dplyr::filter(Waterbody == chosen_lake)
       }
-      #ds_lake = ds_lakes
+      ds_lake = ds_lakes
       rm(ds_lakes)
     }
     
@@ -383,6 +415,8 @@ for(i in 1:nrow(unique_wbs)){
       if(ds_lake$Waterbody != the_wb$Waterbody){
         ds_wb = ds_lake
       }
+      # breaking here - what should be done? There are 5 waterbodies 
+      # for Green Lake that are downstream lakes 
     } else {
       ds_wb = ds_river |> 
         sf::st_intersection(buffer_5km)
