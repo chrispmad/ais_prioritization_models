@@ -18,6 +18,10 @@ library(data.table)
 
 print("Beginning rerunning of MaxEnt models")
 
+force_rerun = FALSE
+
+if(!force_rerun) print("Note: the current option selected for this run is to NOT force a re-run of MaxEnt model generation; these models will only be re-run if new occurrences exist or if 3 months has elapsed since the last model run.")
+
 lan_root = "//SFP.IDIR.BCGOV/S140/S40203/RSD_ FISH & AQUATIC HABITAT BRANCH/General/"
 proj_wd = getwd()
 onedrive_wd = paste0(str_extract(getwd(),"C:/Users/[A-Z]+/"),"OneDrive - Government of BC/data/")
@@ -73,15 +77,17 @@ names(predictor_data)[names(predictor_data) != 'asian_clam_temperature_limits'] 
 pr_sp = gather_ais_data(data = 'species list', lan_root = lan_root, onedrive_wd = onedrive_wd)
 
 # Just gather occurrence records for species currently in the excel sheet of inputs for AIS model runs.
-pr_sp_for_run = pr_sp |> dplyr::filter(name %in% species_for_run$Species)
+pr_sp_for_run = pr_sp |> dplyr::filter(name %in% species_for_run$Species) |> slice(1:2)
 
 occ_dat_res_b = gather_ais_data(data = 'occurrences', redo = T, lan_root = lan_root, 
-                                onedrive_wd = onedrive_wd, , species_list = pr_sp_for_run)
+                                onedrive_wd = onedrive_wd, species_list = pr_sp_for_run,
+                                excel_path = "data/Master Incidence Report Records.xlsx")
 
-occ_dat_res_f = occ_dat_res_b |> 
-  dplyr::filter(Species %in% pr_sp[pr_sp$status != "Prevent",]$name)
+# # Drop species that are in the 'Prevent' category; maybe just keep this as optional?
+# occ_dat_res_f = occ_dat_res_b |> 
+#   dplyr::filter(Species %in% pr_sp[pr_sp$status != "Prevent",]$name)
 
-unique_sp = unique(occ_dat_res_f$Species)
+unique_sp = unique(occ_dat_res_b$Species)
 
 for(i in 1:length(unique_sp)){
   
@@ -89,7 +95,7 @@ for(i in 1:length(unique_sp)){
   
   the_sp = unique_sp[i]
   the_sp_snake = snakecase::to_snake_case(the_sp)
-  the_sp_occ = occ_dat_res_f |> dplyr::filter(Species == the_sp)
+  the_sp_occ = occ_dat_res_b |> dplyr::filter(Species == the_sp)
   
   if(nrow(the_sp_occ) == 0){
     print("No occurrence records for this species in BC, according to our sources. Skipping MaxEnt run...")
@@ -109,7 +115,7 @@ for(i in 1:length(unique_sp)){
       # 2. Have any additional occurrences been added within BC?
       new_occurrences = nrow(the_sp_occ) > maxent_metadata$number_occurrences
     }
-    if(past_expiration_date | new_occurrences){
+    if(past_expiration_date | new_occurrences | force_rerun){
       
       print(paste0("Rerunning maxent for ",the_sp))
       

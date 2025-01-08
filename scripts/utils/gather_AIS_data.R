@@ -15,24 +15,30 @@ gather_ais_data = function(lan_root, onedrive_wd, data = c("occurrences","specie
     # Split out grouped species names into separate rows.
     dplyr::mutate(name = stringr::str_squish(name)) |>
     dplyr::filter(name != 'Bullhead') |>
-    dplyr::arrange(name) |> 
-    # Add a couple alternate ways of spelling species common names.
+    dplyr::arrange(name)
+  
+  # Add a couple alternate ways of spelling species common names.
+  alternate_spellings_tbl = 
+    tidyr::tibble(
+      group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
+                'Other invertebrates','Other invertebrates','Other invertebrates',
+                'Fish','Fish'),
+      status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
+                 'Provincial Containment','Provincial Containment','Provincial Containment','Management',
+                 'Prevent'),
+      name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
+               'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
+               'Mosquitofish'),
+      genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
+                'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
+      species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
+                  'fluminea','fluminea','fluminea','vitreus','affinis')
+    )
+  
+  pr_sp = pr_sp |> 
     dplyr::bind_rows(
-      tidyr::tibble(
-        group = c('Fish','Fish','Fish','Fish','Other invertebrates','Fish',
-                  'Other invertebrates','Other invertebrates','Other invertebrates',
-                  'Fish','Fish'),
-        status = c('Provincial EDRR','Provincial EDRR','Management','Management','Management','Management',
-                   'Provincial Containment','Provincial Containment','Provincial Containment','Management',
-                   'Prevent'),
-        name = c('Oriental weatherfish','Fathead minnow','Pumpkinseed','Carp','Common Freshwater Jellyfish','Bluegill',
-                 'Asiatic clam','Golden clam','Good luck clam','Yellow pickerel',
-                 'Mosquitofish'),
-        genus = c('Misgurnus','Pimephales','Lepomis','Cyprinus','Craspedacusta','Lepomis',
-                  'Corbicula','Corbicula','Corbicula','Sander','Gambusia'),
-        species = c('anguillicaudatus','promelas','gibbosus','carpio','sowerbyi','macrochirus',
-                    'fluminea','fluminea','fluminea','vitreus','affinis')
-      )
+      alternate_spellings_tbl |> 
+        dplyr::filter(paste0(genus,species) %in% unique(paste0(pr_sp$genus,pr_sp$species)))
     )
   
   # Ensure species' common names are Sentence case.
