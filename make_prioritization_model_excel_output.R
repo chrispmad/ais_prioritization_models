@@ -290,10 +290,6 @@ d$native_species_in_wb_names = NA
 d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
-
-d_old = d
-
-
 # This loop cycles through the waterbodies, searching for spatial overlaps with
 # polygons (in the case of SARA and CDC) as well as overlap with point occurrence 
 # data from iNaturalist, the BC Data Catalogue, our invasive species tracking sheet,
