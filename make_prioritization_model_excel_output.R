@@ -217,6 +217,7 @@ for(i in 1:nrow(d)){
 d$new_to_waterbody = FALSE
 d$oldest_record = NA
 
+# Some species don't have an oldest record - why?
 for(i in 1:nrow(d)){
   recs_by_sp = occ_species[occ_species$Species == d[i,]$Species,]
   recs_by_wb = recs_by_sp |> sf::st_filter(d[i,]$geometry)
@@ -290,7 +291,7 @@ d$other_ais_in_wb = 0
 d$other_ais_in_wb_names = NA
 
 
-
+d_old = d
 
 
 # This loop cycles through the waterbodies, searching for spatial overlaps with
@@ -402,13 +403,13 @@ for(i in 1:nrow(unique_wbs)){
           dplyr::arrange(dplyr::desc(AREA_HA)) |>    
           dplyr::slice(1) |>                         
           dplyr::pull(Waterbody)                    
-        
+        chosen_lake = chosen_lake[1]
         
         ds_lake = ds_lakes |> 
           dplyr::filter(Waterbody == chosen_lake)
       }
-      ds_lake = ds_lakes
-      rm(ds_lakes)
+      # ds_lake = ds_lakes
+      # rm(ds_lakes)
     }
     
     if(nrow(ds_lake) > 0){
