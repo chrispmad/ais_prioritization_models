@@ -77,7 +77,7 @@ names(predictor_data)[names(predictor_data) != 'asian_clam_temperature_limits'] 
 pr_sp = gather_ais_data(data = 'species list', lan_root = lan_root, onedrive_wd = onedrive_wd)
 
 # Just gather occurrence records for species currently in the excel sheet of inputs for AIS model runs.
-pr_sp_for_run = pr_sp |> dplyr::filter(name %in% species_for_run$Species) |> slice(1:2)
+pr_sp_for_run = pr_sp |> dplyr::filter(name %in% species_for_run$Species) 
 
 occ_dat_res_b = gather_ais_data(data = 'occurrences', redo = T, lan_root = lan_root, 
                                 onedrive_wd = onedrive_wd, species_list = pr_sp_for_run,
