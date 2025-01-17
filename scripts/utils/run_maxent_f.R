@@ -43,7 +43,7 @@ run_maxent = function(species,
       dat$x = sf::st_coordinates(dat$geometry)[,1]
       dat$y = sf::st_coordinates(dat$geometry)[,2]
       
-      dat = sf::st_drop_geometry(dat)
+      #dat = sf::st_drop_geometry(dat)
     }
   }
   # Check for output folder; if it exists already, delete contents.
@@ -74,9 +74,24 @@ run_maxent = function(species,
     predictor_data = predictor_data[[c(vars_to_use)]]
   }
   
-  cat("\nPulling predictor raster values for presence points...")
+  cat("\nPulling predictor raster values for presence points...\n")
   
-  for(raster_var in unique(names(predictor_data))){
+  ### move to the nearest raster cell
+  
+  dat_orig<-dat
+  dat<-sf::st_transform(dat, crs(predictor_data))
+  dat<-rSDM::points2nearestcell(dat, predictor_data, layer = 1, move = TRUE, distance = 2000)
+  
+  # locations<- ggplot2::ggplot()+
+  #   geom_sf(data=bc_vect, color = "darkgrey")+
+  #   geom_sf(data = dat, color = "green")+
+  #   ggtitle("Presence locations")+
+  #   theme_minimal()
+  
+  
+  
+  
+   for(raster_var in unique(names(predictor_data))){
     dat[[raster_var]] <- terra::extract(predictor_data[[raster_var]], 
                                         dat[,c("x","y")], ID = FALSE)[[raster_var]]
   }
@@ -96,46 +111,48 @@ run_maxent = function(species,
     }
   }
   
+  # ggplot2::ggsave(filename = paste0(output_fn,species_name, "_locations.jpg"),
+  #        plot = locations,
+  #        dpi = 300, width = 8, height = 8)
+  
   dat_just_pred_vars = sf::st_drop_geometry(dat[,c(names(predictor_data))])
   
-  cor <- ENMTools::raster.cor.matrix(predictor_data)
   
-  thresh<-0.6
+  tryCatch(
+    expr = {
+      cor <- ENMTools::raster.cor.matrix(predictor_data)
+      thresh<-0.6 # this could be causing problems - how else could this be done? the value could be too low now...
+      dists<-as.dist(1-abs(cor))
+      clust <- hclust(dists, method = "single")
+      groups <- cutree(clust, h = 1 - thresh)
+      jpeg(paste0(output_fn,"clusterDendogram.jpg"), width = 1200, height = 800)
+      ## Visualize groups
+      plot(clust, hang = -1)
+      rect.hclust(clust, h = 1 - thresh)
+      dev.off()
+      
+      unique_groups <- unique(groups)
+      selected_predictors <- sapply(unique_groups, function(group_num) {
+        group_indices <- which(groups == group_num)
+        return(names(groups)[group_indices[1]])
+      })
+      predictor_data_full<-predictor_data
+      predictor_data<-predictor_data_full[[selected_predictors]]
+    },
+    error = function(e) NULL
+  )
   
-  dists<-as.dist(1-abs(cor))
   
-  clust <- hclust(dists, method = "single")
-  
-  groups <- cutree(clust, h = 1 - thresh)
-  
-  jpeg(paste0(output_fn,"clusterDendogram.jpg"), width = 1200, height = 800)
-  
-  ## Visualize groups:
-  
-  plot(clust, hang = -1)
-  
-  rect.hclust(clust, h = 1 - thresh)
-  
-  dev.off()
-  
-  unique_groups <- unique(groups)
-  selected_predictors <- sapply(unique_groups, function(group_num) {
-    group_indices <- which(groups == group_num)
-    return(names(groups)[group_indices[1]])
-  })
-  predictor_data_full<-predictor_data
-  predictor_data<-predictor_data_full[[selected_predictors]]
-  
-  cor<-raster.cor.matrix(predictor_data)
-  thresh<-0.5
-  dists<-as.dist(1-abs(cor))
-  clust <- hclust(dists, method = "single")
-  groups <- cutree(clust, h = 1 - thresh)
-  jpeg(paste0(output_fn,"clusterDendogram_reduced.jpg"), width = 1200, height = 800)
-  ## Visualize groups:
-  plot(clust, hang = -1)
-  rect.hclust(clust, h = 1 - thresh)
-  dev.off()
+  # cor<-raster.cor.matrix(predictor_data)
+  # thresh<-0.5
+  # dists<-as.dist(1-abs(cor))
+  # clust <- hclust(dists, method = "single")
+  # groups <- cutree(clust, h = 1 - thresh)
+  # jpeg(paste0(output_fn,"clusterDendogram_reduced.jpg"), width = 1200, height = 800)
+  # ## Visualize groups:
+  # plot(clust, hang = -1)
+  # rect.hclust(clust, h = 1 - thresh)
+  # dev.off()
   
   # Remove samples lacking predictor raster values?
   keep_ind = complete.cases(dat_just_pred_vars)
