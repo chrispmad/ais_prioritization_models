@@ -115,7 +115,8 @@ for(i in 1:length(unique_sp)){
       # 2. Have any additional occurrences been added within BC?
       new_occurrences = nrow(the_sp_occ) > maxent_metadata$number_occurrences
     }
-    if(past_expiration_date | new_occurrences | force_rerun){
+    
+    #if(past_expiration_date | new_occurrences | force_rerun){
       
       print(paste0("Rerunning maxent for ",the_sp))
       
@@ -138,12 +139,12 @@ for(i in 1:length(unique_sp)){
           number_pseudoabsences = 10000,
           output_folder = output_folder,
           feature_classes = c("LQ"),
-          regularisation_levels = c(0.33,0.66,1)
+          regularisation_levels = c(0.33,0.66,1,2,5,10)
         ),
         error = function(e) NULL
       )
-    } else {
-      print(paste0("No need to rerun maxent for ",the_sp,", as the species occurrences have not changed and 3 months have not yet elapsed since the model was last run."))
-    }
+    # } else {
+    #   print(paste0("No need to rerun maxent for ",the_sp,", as the species occurrences have not changed and 3 months have not yet elapsed since the model was last run."))
+    # }
   }
 }
