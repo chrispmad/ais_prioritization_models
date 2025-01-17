@@ -187,12 +187,7 @@ d = d |>
 
 # 1. Number of records in waterbody
 
-# occ_species = unique(d$Species) |> 
-#   purrr::map( ~ {bcinvadeR::grab_aq_occ_data(.x)}) |> 
-#   dplyr::bind_rows()
-
-occ_species = gather_ais_data(data = 'occurrences', lan_root = lan_root,
-                              onedrive_wd = onedrive_wd, redo = T) |> 
+occ_species = sf::read_sf(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/AIS_occurrences_all_sources.gpkg")) |> 
   dplyr::filter(Species %in% unique(d$Species))
 
 # Ensure date is always in this format: YYYY-MM-DD and not in 'excel' format.
@@ -457,6 +452,9 @@ for(i in 1:nrow(unique_wbs)){
   cosewic_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% cosewic_risk_status_sp])
   sara_sp_in_wb = unique(unique_species_in_wb[unique_species_in_wb %in% sara_sp])
   
+  # Remove slugs from native species; they're kind of not a fish?
+  native_sp_in_wb = native_sp_in_wb[!stringr::str_detect(native_sp_in_wb, "Slug$")]
+  
   # Remove things from cosewic that are present in sara.
   cosewic_sp_in_wb = cosewic_sp_in_wb[!cosewic_sp_in_wb %in% sara_sp_in_wb]
   
@@ -534,6 +532,7 @@ for(i in 1:nrow(d)){
   # species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
   
   # Read maxent results in for species
+  if(file.exists(paste0(species_folder,"MaxEnt_prediction_raster.tif"))){
   the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
 
   the_pred_about_wb = terra::crop(the_pred_r, sf::st_buffer(d[i,], 5000))
@@ -562,52 +561,70 @@ for(i in 1:nrow(d)){
   d[i,]$wb_maxent_suitability_mean = round(mean_pred_val,3)
   d[i,]$wb_maxent_suitability_median = round(median_pred_val,3)
   d[i,]$wb_maxent_suitability_max = round(max_pred_val,3)
+  } else {
+    warning(paste0("MaxEnt prediction raster does not exist for ",the_species,"; you should probably pause this and make sure to generate that MaxEnt raster first!"))
+  }
   
+  if(file.exists(paste0(species_folder,"MaxEnt_key_metrics.csv"))){
   maxent_key_metrics = read.csv(paste0(species_folder,"MaxEnt_key_metrics.csv"))
   
   d[i,]$wb_maxent_training_AUC = maxent_key_metrics[maxent_key_metrics$metric == "training_auc",]$value
-  
+  } else {
+    warning(paste0("MaxEnt Key Metrics CSV file does not exist for ",the_species,"; you should probably pause this and make sure to generate that file first!"))
+  }
   the_wb = d[i,]
   
-  backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
-  # backdrop = terra::rast(paste0(species_folder,""))
-  # terra::plot(the_pred_r)
-  # terra::plot(terra::rast(backdrop_path))
-  
-  backdrop = ggplot() + 
-    ggimage::geom_image(aes(x=1,y=1,image = backdrop_path), size = 1) +
-    # tidyterra::geom_spatraster(data = the_pred_r) +
-    theme(axis.text = element_blank())
-  
-  inset = ggplot() + 
-    tidyterra::geom_spatraster(data = the_pred_about_wb, aes(fill = !!rlang::sym(raster_var_name))) + 
-    geom_sf(data = d[i,], col = 'red', fill = 'transparent') + 
-    ggthemes::theme_map() + 
-    scale_fill_viridis_c(limits = c(0,1)) +
-    labs(fill = 'Predicted\nSuitability') + 
-    coord_sf(expand = F) +
-    theme(legend.position = 'none',
-          plot.background = element_rect(fill = 'transparent', color = 'black'))
-  
-  combo_plot = backdrop + 
-    patchwork::inset_element(inset, 
-                             left = 0.1,
-                             bottom = 0.15,
-                             right = 0.3,
-                             top = 0.5)
-  
-  ggsave(filename = paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
-         plot = combo_plot,
-         dpi = 300,
-         width = 8, height = 8)
-  
-  d[i,]$wb_maxent_suitability_fig = paste0(
-    "HYPERLINK(\"",
-    paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
-    "\", \"",
-    "LINK",
-    "\")"
-  )
+  # Does the background image exist?
+  if(file.exists(paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg"))){
+    backdrop_path = paste0(species_folder,"MaxEnt_prediction_plot_no_occ.jpg")
+
+    backdrop = tryCatch(
+      expr = {
+        ggplot() + 
+          ggimage::geom_image(aes(x=1,y=1,image = backdrop_path), size = 1) +
+          # tidyterra::geom_spatraster(data = the_pred_r) +
+          theme(axis.text = element_blank())
+      },
+      error = function(e) return(NULL)
+    )
+    
+    inset = ggplot() + 
+      tidyterra::geom_spatraster(data = the_pred_about_wb, aes(fill = !!rlang::sym(raster_var_name))) + 
+      geom_sf(data = d[i,], col = 'red', fill = 'transparent') + 
+      ggthemes::theme_map() + 
+      scale_fill_viridis_c(limits = c(0,1)) +
+      labs(fill = 'Predicted\nSuitability') + 
+      coord_sf(expand = F) +
+      theme(legend.position = 'none',
+            plot.background = element_rect(fill = 'transparent', color = 'black'))
+    
+    combo_plot = tryCatch(
+      expr = {
+        backdrop + 
+          patchwork::inset_element(inset, 
+                                   left = 0.1,
+                                   bottom = 0.15,
+                                   right = 0.3,
+                                   top = 0.5)
+      }, 
+      error = function(e) return(NULL)
+    )
+    
+    try(
+      ggsave(filename = paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
+             plot = combo_plot,
+             dpi = 300,
+             width = 8, height = 8)
+    )
+    
+    d[i,]$wb_maxent_suitability_fig = paste0(
+      "HYPERLINK(\"",
+      paste0(species_folder,"MaxEnt_prediction_plot_no_occ_w_inset.jpg"),
+      "\", \"",
+      "LINK",
+      "\")"
+    )
+  }
 }
 
 # First Nations territories within 10 kilometers
@@ -768,7 +785,7 @@ d_bins = d |>
 other_columns = d |> 
   sf::st_drop_geometry() |> 
   dplyr::select(Region:Established_in_Waterbody, new_to_waterbody, oldest_record,first_nations_cons_area_overlapped, 
-                wildlife_habitat_areas, wildlife_habitat_areas_hectares) |> 
+                wildlife_habitat_areas, wildlife_habitat_areas_hectares, other_ais_in_wb, other_ais_in_wb_names) |> 
   dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3))
 
 intro = d_bins |> 
@@ -778,7 +795,7 @@ hab_suit = d_bins |>
   dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability_max, wb_maxent_suitability_mean, wb_maxent_training_AUC, maxent_suitability_max_b, maxent_suitability_mean_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
 
 conseq = d_bins |> 
-  dplyr::select(Region:Established_in_Waterbody, sara_in_wb:other_ais_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b)
+  dplyr::select(Region:Established_in_Waterbody, sara_in_wb:native_species_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b)
 
 dat_l = list(other_columns, intro, hab_suit, conseq)
 names(dat_l) = c('other_columns', 'intro', 'hab_suit', 'conseq') 
@@ -823,8 +840,14 @@ for(i in 1:nrow(results)){
       )
 }
 
-# Add an overall summary column
-results$priority_b = results$intro_total + results$hab_suit_total + results$conseq_total
+# # Add an overall summary column
+# results$priority_b = results$intro_total + results$hab_suit_total + results$conseq_total
+results$priority_b = results$intro_total/2 + results$hab_suit_total + results$conseq_total
+
+# Shuffle column order a bit.
+results = results |> 
+  dplyr::select(Region:wildlife_habitat_areas_hectares,oldest_record_b:conseq_total,
+                other_ais_in_wb,other_ais_in_wb_b,other_ais_in_wb_names,priority_b)
 
 # # Make column names nicer.
 # results = results |> 
@@ -908,6 +931,33 @@ metadata = tibble(
 
 openxlsx::writeData(my_wb, "metadata", metadata)
 openxlsx::setColWidths(my_wb,"metadata",cols = 2:ncol(metadata), widths = 120)
+
+# Make new tab that shows the ranges for the binning...
+openxlsx::addWorksheet(my_wb, "binning_levels")
+
+binning_levels = data.frame(variable = c("number_inflows_b","other_ais_in_wb_b",
+                        "sara_in_wb_b","sara_downstream_b",
+                        "COSEWIC_in_wb_b","COSEWIC_downstream_b",
+                        "cdc_listed_in_wb_b","cdc_listed_downstream_b",
+                        "maxent_suitability_max_b","maxent_suitability_mean_b",
+                        "m_suit_uncertainty_b","introduction_risk_b"
+                        ),
+           levels = c("<= 5 ~ 1, <= 25 ~ 2, > 25 ~ 3",
+                      "<= 3 ~ 0, <= 6 ~ -1, > 6 ~ -2",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+                      "<= 0.33 ~ 1, <= 0.66 ~ 2, > 0.66 ~ 3",
+                      "<= 0.33 ~ 1, <= 0.66 ~ 2, > 0.66 ~ 3",
+                      ">= 0.9 ~ 1, >= 0.8 ~ 2, < 0.8 ~ 3",
+                      "<= 0 ~ 1, <= 4 ~ 2, > 4 ~ 3"
+                      )
+)
+
+openxlsx::writeData(my_wb, "binning_levels", binning_levels)
 
 openxlsx::saveWorkbook(my_wb, file = "output/example_ais_prioritization_results.xlsx",
                        overwrite = T)

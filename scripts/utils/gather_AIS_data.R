@@ -1,14 +1,24 @@
 gather_ais_data = function(lan_root, onedrive_wd, data = c("occurrences","species list"), species_list = NA, redo = F, excel_path = ""){
+
+  pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
+                             skip = 20)
+  names(pr_sp) <- c("group","status","name","genus","species")
   
-  # If the user doesn't provide a reduced list of species, run for ALL species; otherwise, just for provided subset of priority species excel file.
-  if(!is.data.frame(species_list)){
-    pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
-                               skip = 20)
-  } else {
-    pr_sp = species_list
+  # If the user provides a reduced list of species (vector of full dataframe with column Species),
+  # run for JUST THOSE species; otherwise, run for ALL species in pr_sp excel file.
+  if(is.vector(species_list) | is.data.frame(species_list)){
+    if(is.vector(species_list)){
+      if(!is.na(species_list)){
+        pr_sp = pr_sp |> 
+          dplyr::filter(str_to_sentence(name) %in% str_to_sentence(unique(species_list)))
+      }
+    }
+    if(is.data.frame(species_list)){
+      pr_sp = pr_sp |> 
+        dplyr::filter(str_to_sentence(name) %in% str_to_sentence(species_list$Species))
+    }
   }
   
-  names(pr_sp) <- c("group","status","name","genus","species")
   # Just for our species of interest.
   pr_sp = pr_sp |>
     dplyr::filter(group == 'Fish' | name %in% c("Whirling disease") | stringr::str_detect(name, '(mussel|crayfish|mystery snail|mudsnail|clam|jellyfish|shrimp|waterflea)')) |> 
@@ -50,6 +60,7 @@ gather_ais_data = function(lan_root, onedrive_wd, data = c("occurrences","specie
     if(!redo){
       sf::read_sf(paste0(onedrive_wd,"invasive_species_records_2024-11-20.gpkg"))
     } else {
+      
       # Do record search for all species of interest! This takes a minute.
       occ_dat_search_results = pr_sp$name |>
         lapply(\(x) {
