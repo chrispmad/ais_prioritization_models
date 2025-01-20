@@ -109,11 +109,21 @@ wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
       collect() |> 
       dplyr::summarise()
     
-    wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |> 
-      dplyr::summarise() |> 
-      dplyr::mutate(wb_name = .x) |> 
-      dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+    # wbs_streams = bcdc_query_geodata('freshwater-atlas-stream-network') |> 
+    #   filter(GNIS_NAME_1 %in% TO_string) |> 
+    #   collect() |> 
     
+    
+     wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |>
+       dplyr::summarise() |>
+       dplyr::mutate(wb_name = .x) |>
+       dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+    
+     # wbs = dplyr::bind_rows(do.call("rbind", list(wbs_rivers,wbs_lakes, streams))) |>
+    #   dplyr::summarise() |>
+    #   dplyr::mutate(wb_name = .x) |>
+    #   dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
+
     wbs
   }
 }, .progress = TRUE)
