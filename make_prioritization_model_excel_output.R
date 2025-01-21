@@ -46,6 +46,22 @@ regs = bcmaps::nr_regions() |> sf::st_transform(4326)
 # in excel and read it in.
 d = readxl::read_excel("inputs_for_prioritization_model.xlsx")
 
+
+d = d |>
+  dplyr::mutate(Species = dplyr::case_when(
+    Species == 'Oriental weatherfish' ~ 'Oriental weather loach',
+    Species == 'Fathead minnow' ~ 'Rosy red fathead minnow',
+    Species == 'Mosquitofish' ~ 'Western mosquitofish',
+    Species %in% c('Pumpkinseed sunfish','Pumpkinseed Sunfish') ~ 'Pumpkinseed',
+    Species == 'Common freshwater jellyfish' ~ 'Freshwater jellyfish',
+    Species == 'Bluegill' ~ 'Bluegill sunfish',
+    Species == 'Yellow pickerel' ~ 'Walleye',
+    Species %in% c("Asiatic clam","Golden clam","Good luck clam") ~ 'Asian clam',
+    Species %in% c("Carp","European Carp","Common Carp") ~ "Common carp",
+    Species == "Rosy red minnow" ~ "Rosy red fathead minnow",
+    T ~ Species
+  ))
+
 # =========================================
 
 # Find Waterbodies (based on name and region!)
@@ -74,6 +90,8 @@ wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
       filter(GNIS_NAME_1 == .x) |> 
       collect()
     
+    
+    
     if(nrow(potential_lakes) > 0 & nrow(potential_rivers) > 0){
       wbs = dplyr::bind_rows(
         potential_lakes |> dplyr::select(wb_name = GNIS_NAME_1, FWA_WATERSHED_CODE, geometry),
@@ -88,7 +106,22 @@ wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
     }
     
     if(nrow(potential_lakes) == 0 & nrow(potential_rivers) == 0){
-      return(NULL)
+      
+      potential_streams = bcdc_query_geodata('freshwater-atlas-stream-network') |>
+        filter(INTERSECTS(the_reg$geometry)) |>
+        filter(GNIS_NAME == .x) |> 
+        collect() |> 
+        st_zm() |> 
+        group_by(FWA_WATERSHED_CODE, GNIS_NAME) |> 
+        st_buffer(10) |> 
+        summarise()
+      
+      
+      if(nrow(potential_streams) == 0){
+          return(NULL)
+        }else{
+          wbs = potential_streams |> dplyr::select(wb_name = GNIS_NAME, FWA_WATERSHED_CODE, geometry)
+        }
     } else {
       return(
         wbs |> 
@@ -109,17 +142,15 @@ wbs_list = purrr::map2(unique_wbs$Waterbody, unique_wbs$Region, ~ {
       collect() |> 
       dplyr::summarise()
     
-    # wbs_streams = bcdc_query_geodata('freshwater-atlas-stream-network') |> 
-    #   filter(GNIS_NAME_1 %in% TO_string) |> 
-    #   collect() |> 
     
     
+  
      wbs = dplyr::bind_rows(wbs_rivers,wbs_lakes) |>
        dplyr::summarise() |>
        dplyr::mutate(wb_name = .x) |>
        dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
-    
-     # wbs = dplyr::bind_rows(do.call("rbind", list(wbs_rivers,wbs_lakes, streams))) |>
+
+    # wbs = dplyr::bind_rows(do.call("rbind", list(wbs_rivers,wbs_lakes, wbs_streams))) |>
     #   dplyr::summarise() |>
     #   dplyr::mutate(wb_name = .x) |>
     #   dplyr::mutate(FWA_WATERSHED_CODE = "300-432687-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000-000000")
@@ -542,6 +573,7 @@ for(i in 1:nrow(d)){
   # species_folder = stringr::str_replace(species_folder,"pumpkinseed\\/","pumpkinseed_sunfish\\/")
   
   # Read maxent results in for species
+  
   if(file.exists(paste0(species_folder,"MaxEnt_prediction_raster.tif"))){
   the_pred_r = terra::rast(paste0(species_folder,"MaxEnt_prediction_raster.tif"))
 
