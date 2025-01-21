@@ -687,6 +687,7 @@ d$wildlife_habitat_areas = 0
 d$wildlife_habitat_areas_hectares = NA
 
 # Wildlife Habitat Areas (GAR)
+# breaking here - why?
 for(i in 1:nrow(d)){
   
   print(i)
@@ -696,10 +697,13 @@ for(i in 1:nrow(d)){
   wha_touching_wb = bcdata::bcdc_query_geodata("wildlife-habitat-areas-approved") |> 
     bcdata::filter(bcdata::INTERSECTS(wb_in_albers)) |> 
     bcdata::collect()
-  
+  if(nrow(wha_touching_wb)){
   d[i,]$wildlife_habitat_areas = nrow(wha_touching_wb)
   d[i,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
-  
+  }else{
+    d[i,]$wildlife_habitat_areas = 0
+    d[i,]$wildlife_habitat_areas_hectares = 0
+  }
 }
 
 # Introduction risk!
