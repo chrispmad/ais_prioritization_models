@@ -1,5 +1,5 @@
 gather_ais_data = function(lan_root, onedrive_wd, data = c("occurrences","species list"), species_list = NA, redo = F, excel_path = ""){
-
+  
   pr_sp = readxl::read_excel(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/AIS_priority_species.xlsx"),
                              skip = 20)
   names(pr_sp) <- c("group","status","name","genus","species")
@@ -15,7 +15,7 @@ gather_ais_data = function(lan_root, onedrive_wd, data = c("occurrences","specie
     }
     if(is.data.frame(species_list)){
       pr_sp = pr_sp |> 
-        dplyr::filter(str_to_sentence(name) %in% str_to_sentence(species_list$Species))
+        dplyr::filter(str_to_sentence(name) %in% str_to_sentence(species_list$name))
     }
   }
   
