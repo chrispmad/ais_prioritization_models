@@ -103,19 +103,29 @@ spp_df_l |>
                      tune.args = list(fc = c("L"),
                                       rm = c(1:5)))
     
-    top_model = me@results |> 
+    top_model1 = me@results |> 
       dplyr::mutate(auccbi = (cbi.train + auc.train) / 2) |> 
       dplyr::arrange(dplyr::desc(auccbi)) |> 
       dplyr::slice(1)
     
-    top_model = me@predictions[[top_model$tune.args]]
+    top_model = me@predictions[[top_model1$tune.args]]
+    
+    maxent_html = me@models[[top_model1$tune.args]]@html
+    
+    
+    
+    jpeg(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/response_curve_",snakecase::to_snake_case(the_group),".jpg"), width = 1200, height = 800)
+    response(me@models[[top_model1$tune.args]])
+    dev.off()
     
     # terra::plot(top_model)
     
+    
     # Write out the predicted raster to be used in the excel doc as
     # the 'risk of introduction' variable.
-    terra::writeRaster(top_model, paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/introduction_risk_",snakecase::to_snake_case(the_group),".tif"))
     
+    terra::writeRaster(top_model, paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/introduction_risk_",snakecase::to_snake_case(the_group),".tif"), overwrite = T)
+    file.copy(from = maxent_html, to = paste0(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/intro_risk_MaxEnt_results_",snakecase::to_snake_case(the_group),".html")))
   })
 
 
