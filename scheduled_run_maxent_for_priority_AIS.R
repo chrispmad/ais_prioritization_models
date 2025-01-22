@@ -44,10 +44,10 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      ext_vect = bc)
 
-predictor_var_matrix = read_excel("inputs_for_prioritization_model.xlsx",
+predictor_var_matrix = readxl::read_excel("inputs_for_prioritization_model.xlsx",
                                   sheet = "species_predvars")
 
-species_for_run = read_excel("inputs_for_prioritization_model.xlsx",
+species_for_run = readxl::read_excel("inputs_for_prioritization_model.xlsx",
                              sheet = "inputs")
 
 output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/")
@@ -79,9 +79,10 @@ pr_sp = gather_ais_data(data = 'species list', lan_root = lan_root, onedrive_wd 
 # Just gather occurrence records for species currently in the excel sheet of inputs for AIS model runs.
 pr_sp_for_run = pr_sp |> dplyr::filter(name %in% species_for_run$Species) 
 
-occ_dat_res_b = gather_ais_data(data = 'occurrences', redo = T, lan_root = lan_root, 
-                                onedrive_wd = onedrive_wd, species_list = pr_sp_for_run,
-                                excel_path = "data/Master Incidence Report Records.xlsx")
+# occ_dat_res_b = gather_ais_data(data = 'occurrences', redo = T, lan_root = lan_root, 
+#                                 onedrive_wd = onedrive_wd, species_list = pr_sp_for_run,
+#                                 excel_path = "data/Master Incidence Report Records.xlsx")
+occ_dat_res_b = sf::read_sf(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/AIS_occurrences_all_sources.gpkg"))
 
 # # Drop species that are in the 'Prevent' category; maybe just keep this as optional?
 # occ_dat_res_f = occ_dat_res_b |> 
