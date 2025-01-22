@@ -83,7 +83,7 @@ spp_df_l |>
     watercourses = terra::rast(paste0(onedrive_path,"fwa_streams/stream_order_three_plus_2km_res.tif")) 
     watercourses<-terra::crop(watercourses, extentvect)
     watercourses<-terra::mask(watercourses, extentvect)
-    browser()
+    
     # Generate the same number of absences as seen in what we are predicting - see Massin et al. (2012)
     pseudoabsences <- predicts::backgroundSample(watercourses, p = terra::vect(dat), n = 10000, extf = 0.9) |> 
       as.data.frame()
