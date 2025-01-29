@@ -15,3 +15,4 @@ rasters/**
 *.tif
 .xlsx
 /scripts/python/*
+worddocs/**
