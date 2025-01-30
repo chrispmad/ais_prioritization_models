@@ -115,7 +115,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
     dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability_max, wb_maxent_suitability_mean, wb_maxent_training_AUC, maxent_suitability_max_b, maxent_suitability_mean_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
   
   conseq = d_bins |> 
-    dplyr::select(Region:Established_in_Waterbody, sara_in_wb:native_species_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b)
+    dplyr::select(Region:Established_in_Waterbody, sara_in_wb:native_species_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b, SAR_overlap_wbs_in_10_km)
   
   dat_l = list(other_columns, intro, hab_suit, conseq)
   names(dat_l) = c('other_columns', 'intro', 'hab_suit', 'conseq') 
@@ -164,9 +164,10 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   # results$priority_b = results$intro_total + results$hab_suit_total + results$conseq_total
   results$priority_b = round(results$intro_total/2 + results$hab_suit_total + results$conseq_total, 2)
   
+  
   # Shuffle column order a bit.
   results = results |> 
-    dplyr::select(Region:wildlife_habitat_areas_hectares,oldest_record_b:conseq_total,
+    dplyr::select(Region:wildlife_habitat_areas_hectares,oldest_record_b:cdc_listed_downstream_b,SAR_overlap_wbs_in_10_km,conseq_total,
                   other_ais_in_wb,other_ais_in_wb_b,other_ais_in_wb_names,priority_b)
   
   # # Make column names nicer.
