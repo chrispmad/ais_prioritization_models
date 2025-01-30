@@ -91,13 +91,17 @@ for(m in 1){
   # Additional test - look for waterbodies within x KM that are connected
   # to focal waterbody and that have SAR overlaps
   sar_overlap_wbs = sf::read_sf(paste0(onedrive_wd,"waterbodies_overlapping_with_SARA_and_CDC_occs.gpkg"))
-  d$SAR_overlap_wbs_in_10_km = 0
+  d$SAR_overlap_wbs_in_10_km = NA
   
   previous_results = readRDS(paste0(onedrive_wd,"AIS_previous_query_results.rds"))
   
   for(i in 1:nrow(d)){
-    print(i)
+    
     the_wb = d[i,] |> sf::st_transform(3005) |> sf::st_buffer(dist = 10000)
+    this_prev <- previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][1,]
+    
+    if(is.na(this_prev$SAR_overlap_wbs_in_10_km)){
+    
     the_fwa_code = the_wb$FWA_WATERSHED_CODE
     neighbour_lakes = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> 
       filter(INTERSECTS(the_wb)) |> 
@@ -111,10 +115,16 @@ for(m in 1){
       dplyr::arrange(dplyr::desc(query_date)) |> 
       dplyr::slice(1)
     
-    if(is.na(prev_result_row$SAR_overlap_wbs_in_10_km)){
-      previous_results[previous_results$Region == the_wb$Region & previous_results$Waterbody == the_wb$Waterbody,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
-      saveRDS(previous_results, paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    previous_results[previous_results$Region == the_wb$Region & previous_results$Waterbody == the_wb$Waterbody,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
+    saveRDS(previous_results, paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    }else{
+      d[i,]$SAR_overlap_wbs_in_10_km <- this_prev$SAR_overlap_wbs_in_10_km
     }
+    
+    # if(is.na(prev_result_row$SAR_overlap_wbs_in_10_km)){
+    #   previous_results[previous_results$Region == the_wb$Region & previous_results$Waterbody == the_wb$Waterbody,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
+    #   saveRDS(previous_results, paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    # }
   }
   
   # 2. Number of records in waterbody
