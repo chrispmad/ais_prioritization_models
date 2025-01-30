@@ -37,8 +37,7 @@ predictor_data = prep_predictor_data(proj_path = proj_wd,
                                      onedrive_path = paste0(onedrive_wd),
                                      extentvect)
 
-predictor_data <- predictor_data[[c("population_density",
-                                    "TotalInspections", "days_fished","dist_to_paved_roads")]]
+predictor_data <- predictor_data[[c("population_density","days_fished")]]
 
 sppDF<- sf::st_read(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/AIS_occurrences_all_sources.gpkg"))
 
@@ -123,9 +122,10 @@ spp_df_l |>
     
     # Write out the predicted raster to be used in the excel doc as
     # the 'risk of introduction' variable.
-    
-    terra::writeRaster(top_model, paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/introduction_risk_",snakecase::to_snake_case(the_group),".tif"), overwrite = T)
-    file.copy(from = maxent_html, to = paste0(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/intro_risk_MaxEnt_results_",snakecase::to_snake_case(the_group),".html")))
-  })
+
+    terra::writeRaster(top_model, paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/introduction_risk_reduced_",snakecase::to_snake_case(the_group),".tif"), overwrite = T)
+    file.copy(from = maxent_html, to = paste0(paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/MaxEnt_predictions/introduction_risk/intro_MaxEnt_reduced_",snakecase::to_snake_case(the_group),".html")))
+      
+    })
 
 
