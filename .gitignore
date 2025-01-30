@@ -16,3 +16,4 @@ rasters/**
 .xlsx
 /scripts/python/*
 worddocs/**
+inputs_watershed.xlsx

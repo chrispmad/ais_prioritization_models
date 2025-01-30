@@ -51,6 +51,7 @@ for(m in 1){
     dplyr::arrange(Watershed,Waterbody,dplyr::desc(query_date)) |> 
     dplyr::slice(1) |> 
     dplyr::ungroup()
+  
   saveRDS(previous_results,paste0(onedrive_wd,"AIS_previous_query_results.rds"))
   # Functions
   
@@ -96,7 +97,6 @@ for(m in 1){
   previous_results = readRDS(paste0(onedrive_wd,"AIS_previous_query_results.rds"))
   
   for(i in 1:nrow(d)){
-    
     the_wb = d[i,] |> sf::st_transform(3005) |> sf::st_buffer(dist = 10000)
     this_prev <- previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][1,]
     
@@ -120,6 +120,25 @@ for(m in 1){
     }else{
       d[i,]$SAR_overlap_wbs_in_10_km <- this_prev$SAR_overlap_wbs_in_10_km
     }
+    
+    # # Check previous_results file for this waterbody
+    # prev_res = previous_results |> 
+    #   dplyr::filter(Region == the_wb$Region, Waterbody == the_wb$Waterbody) 
+    # if(nrow(prev_res) > 0){
+    #   d[i,]$SAR_overlap_wbs_in_10_km = prev_res$SAR_overlap_wbs_in_10_km
+    # } else {
+    #   # Shoot, looks like this waterbody needs to have this variable (re)calculated!
+    #   print(paste0("(re)calculating SAR_overlap_wbs_in_10_km for ",the_wb$Waterbody))
+    #   the_fwa_code = the_wb$FWA_WATERSHED_CODE
+    #   neighbour_lakes = bcdata::bcdc_query_geodata('freshwater-atlas-lakes') |> 
+    #     filter(INTERSECTS(the_wb)) |> 
+    #     collect() |> 
+    #     filter(FWA_WATERSHED_CODE != the_fwa_code) |> 
+    #     sf::st_filter(sar_overlap_wbs)
+    #   d[i,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
+    #   previous_results[previous_results$Region == the_wb$Region & previous_results$Waterbody == the_wb$Waterbody,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
+    #   saveRDS(previous_results, paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    # }
     
     # if(is.na(prev_result_row$SAR_overlap_wbs_in_10_km)){
     #   previous_results[previous_results$Region == the_wb$Region & previous_results$Waterbody == the_wb$Waterbody,]$SAR_overlap_wbs_in_10_km = nrow(neighbour_lakes)
