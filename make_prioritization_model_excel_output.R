@@ -152,6 +152,7 @@ for(m in 1){
   # 3. Distinct DFO SARA species, COSEWIC and CDC species in waterbody.
   
   previous_results = readRDS(file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+  #check this for issues - sara in wb_names not initialised when filtering for it
   d = native_CDC_COSEWIC_SARA_species_occurrence_counter(d,unique_wbs,wbs_overlap_sara_cdc,previous_results,onedrive_wd)
   
   # 4. MaxEnt Predictions
