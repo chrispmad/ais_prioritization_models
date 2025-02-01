@@ -88,7 +88,7 @@ fished_plot = ggplot() +
 dist_plot = ggplot() +
   tidyterra::geom_spatraster(data = predictor_data[[3]]) +
   #geom_sf(data = spp_df_l[[1]], color = "red", alpha = 0.8) +
-  scale_fill_gradient(low = "black  ", high = "orange", na.value = NA, name = "Distance (m)") + # Example using RColorBrewer
+  scale_fill_gradient(low = "blue", high = "orange", na.value = NA, name = "Distance (m)") + # Example using RColorBrewer
   labs(title = paste0("Distance to paved roads"),
        subtitle = paste0()
   ) +  # Add shape to the legend
