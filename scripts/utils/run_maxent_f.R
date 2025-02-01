@@ -46,6 +46,11 @@ run_maxent = function(species,
       #dat = sf::st_drop_geometry(dat)
     }
   }
+  ## If the species is northern pike, then remove the native northern pike from the data returned
+  source("scripts/utils/native_northern_pike_f.R")
+  if("Northern pike" %in% pr_sp$Species){
+    occ_dat_res_b = remove_native_nPike(occ_dat_res_b)
+  }
   # Check for output folder; if it exists already, delete contents.
   output_fn = paste0(output_folder,snakecase::to_snake_case(species_name),"/")
   
