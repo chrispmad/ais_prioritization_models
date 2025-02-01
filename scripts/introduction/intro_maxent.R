@@ -41,6 +41,80 @@ predictor_data <- predictor_data[[c("population_density","days_fished")]]
 
 sppDF<- sf::st_read(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/AIS_occurrences_all_sources.gpkg"))
 
+
+northern_pike <- sppDF |> filter(Species == "Northern pike")
+
+bc_watersheds <- st_read(paste0(onedrive_wd,"CNF/watershed_groups.gpkg")) 
+bc_watersheds <- bc_watersheds |> st_transform(4326)
+
+
+
+pike_watersheds<- bc_watersheds |> 
+  filter(str_detect(WATERSHED_GROUP_NAME, c("Peace|Liard|Yukon|Alsek|Taku|Makenzie")))
+
+
+# plot(st_geometry(bc_watersheds), border = "black", col = NA)  # Transparent fill, black border
+# plot(st_geometry(pike_watersheds), col = "blue", add = TRUE)
+# plot(st_geometry(northern_pike), col = "purple", add = TRUE)
+
+p1<-ggplot()+
+  geom_sf(data = bc_watersheds, color = "darkgrey", fill = NA)+
+  geom_sf(data = pike_watersheds, colour = "black", aes(fill = as.factor(WATERSHED_GROUP_NAME)))+
+  geom_sf(data = northern_pike |> st_transform(3005), color = "brown")+
+  scale_fill_viridis_d(option = "D", name = "Watersheds")+
+  theme_minimal()
+
+# Map is in Harvey (2009) and https://waves-vagues.dfo-mpo.gc.ca/Library/337844.pdf and https://www.tru.ca/__shared/assets/Dan_Doutaz_thesis45335.pdf
+# For Lower Peace River, Peace Arm and Upper Peace Arm - mark all points to the north with "native" tag (inclusive of watersheds named)
+# For Laird and Upper Laird - If they have a "native" tag from previous, check if they are to the east (inclusive of watersheds named)
+# and keep "native" tag if so, else remove native tag.
+northern_pike_transformed <- st_transform(northern_pike, st_crs(pike_watersheds))
+
+#get the bounding box of the watersheds, where pike are native
+bbox <- st_bbox(pike_watersheds)
+
+#get the points of pike where they are within the limits of the bounding box 
+# ymin and xmin. This will generate the points that are north and east of the watersheds
+points_north_east <- northern_pike_transformed %>%
+  filter(st_coordinates(.)[,2] > bbox["ymin"] & st_coordinates(.)[,1] > bbox["xmin"])
+
+    
+plot_native_pike <- ggplot() +
+  geom_sf(data = bc, fill = "lightgrey", color = "black", alpha = 0.5) +
+  geom_sf(data = pike_watersheds, color = "purple", alpha = 0.8)+
+  geom_sf(data = points_north_east, color = "orange", size = 2) +
+  ggtitle("Northern Pike Points in Watersheds") +
+  theme_minimal()
+#plot_native_pike
+
+# This works, so lets apply it to the AIS occurrences, only for northen pike
+
+sppdf_backup<-sppDF
+
+pike_watersheds<-st_transform(pike_watersheds, st_crs(sppDF))
+
+sppDF_filtered <- sppDF %>%
+  mutate(X = st_coordinates(.)[,1],  # Extract longitude
+         Y = st_coordinates(.)[,2]) %>%  # Extract latitude
+  filter(!(Species == "Northern pike" & Y > bbox["ymin"] & X > bbox["xmin"])) %>%
+  dplyr::select(-X, -Y)  # Remove temporary columns
+
+## test to see if this worked as intended
+sppDF_northern_pike <- sppDF %>%
+  mutate(X = st_coordinates(.)[,1],  # Extract longitude
+         Y = st_coordinates(.)[,2]) %>%  # Extract latitude
+  filter((Species == "Northern pike" & Y > bbox["ymin"] & X > bbox["xmin"])) %>%
+  dplyr::select(-X, -Y)  # Remove temporary columns  
+
+#plot(st_geometry(sppDF_northern_pike)) # Itworked!
+## Pike done
+sppDF <- sppDF_filtered
+
+
+############# Yellow perch
+#yellow_perch <-  sppDF |> filter(Species == "Yellow perch")
+
+
 # Split occurrences by group
 source("scripts/utils/gather_AIS_data.R")
 pr_sp = gather_ais_data(lan_root = lan_root, onedrive_wd = onedrive_wd, data = "species list",
