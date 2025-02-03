@@ -110,3 +110,7 @@ wbs_overlapping_with_sara_and_cdc |>
   dplyr::count(sara_common_name, cdc_common_name, sort = T)
 
 sf::write_sf(wbs_overlapping_with_sara_and_cdc, paste0(onedrive_wd,"waterbodies_overlapping_with_SARA_and_CDC_occs.gpkg"))
+
+sara_sp_to_use = tibble(species = unique(na.omit(wbs_overlapping_with_sara_and_cdc$sara_common_name)))
+
+write.csv(sara_sp_to_use,"data/sara_species_to_look_for.csv", row.names = F)

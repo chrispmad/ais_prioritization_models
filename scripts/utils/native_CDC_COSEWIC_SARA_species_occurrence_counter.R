@@ -1,6 +1,6 @@
-native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_overlap_sara_cdc,previous_results,onedrive_wd){
-  
-  TO_string = c("Okanagan Lake","Okanagan River","Skaha Lake",
+native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_overlap_sara_cdc,previous_results,onedrive_wd,redo = F){
+
+    TO_string = c("Okanagan Lake","Okanagan River","Skaha Lake",
                 "Vaseux Lake","Vaseux Creek","Osoyoos Lake")
   
   # Go up one level in the file structure to find the SAR scraper R project folder.
@@ -16,12 +16,7 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
     dplyr::distinct() |> 
     dplyr::pull(COSEWIC.common.name)
   
-  sara_sp = federal_risk_registry_tbl |> 
-    dplyr::filter(COSEWIC.status %in% c("Endangered","Special Concern","Threatened")) |> 
-    dplyr::filter(Taxonomic.group %in% c("Fishes (freshwater)","Molluscs")) |> 
-    dplyr::select(COSEWIC.common.name) |> 
-    dplyr::distinct() |> 
-    dplyr::pull(COSEWIC.common.name)
+  sara_sp = read.csv("data/sara_species_to_look_for.csv")
   
   d$sara_in_wb = 0
   d$sara_in_wb_names = NA
@@ -42,23 +37,28 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
   
   for(i in 1:nrow(unique_wbs)){
   
-    the_wb = unique_wbs[i,]
+    redo = F
     
+    the_wb = unique_wbs[i,]
+    browser()
     # Has this row been 'done' already in this session? If so, skip!
+    if("sara_in_wb" %in% names(previous_results)){
     the_wb_prev = previous_results |> 
       dplyr::filter(Region == the_wb$Region & Waterbody == the_wb$Waterbody) |> 
-      dplyr::filter(!is.na(sara_in_wb_names)) |> 
+      dplyr::filter(!is.na(sara_in_wb)) |> 
       dplyr::select(-Species) |> 
       dplyr::arrange(dplyr::desc(query_date)) |> 
       dplyr::slice(1)
-    
+    } else {
+      
+    }
     if(nrow(the_wb_prev) > 0){
       date_cutoff = lubridate::ymd(the_wb_prev$query_date) + lubridate::dmonths(1)
     } else {
       date_cutoff = lubridate::ymd(Sys.Date()) - lubridate::mday(1)
     }
     
-    if(nrow(the_wb_prev) > 0 & Sys.Date() < date_cutoff){
+    if(nrow(the_wb_prev) > 0 & Sys.Date() < date_cutoff & redo == F){
       #print("This waterbody already done! You're lucky!")
       d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$sara_in_wb = the_wb_prev$sara_in_wb
       d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$sara_in_wb_names = the_wb_prev$sara_in_wb_names
@@ -80,7 +80,6 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
       
       print(paste0("Working on waterbody ",i,", which is ",the_wb$Waterbody))
       
-
       geom_and_fwa_for_wb = d |> 
         dplyr::filter(Waterbody == the_wb$Waterbody, Region == the_wb$Region) |> 
         dplyr::select(Waterbody,Region,FWA_WATERSHED_CODE,geometry) |> 
@@ -137,21 +136,23 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
           filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> 
           collect() |> sf::st_transform(4326)
         
-        # Check for streams too.
-        ds_streams = bcdata::bcdc_query_geodata('freshwater-atlas-stream-network') |> 
-          filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> 
-          collect() |> sf::st_zm() |> 
-          sf::st_transform(4326)
-        
-        if(nrow(ds_streams) > 0){
-          ds_streams = ds_streams |> 
-            dplyr::rename(Waterbody = GNIS_NAME) |> 
-            dplyr::group_by(FWA_WATERSHED_CODE, Waterbody) |> 
-            dplyr::summarise(.groups = "drop")
+        # Check for streams too, if necessary.
+        if(nrow(ds_lakes) == 0 & nrow(ds_river) == 0){
+          ds_streams = bcdata::bcdc_query_geodata('freshwater-atlas-stream-network') |> 
+            filter(FWA_WATERSHED_CODE == ds_wb_fwa_code) |> 
+            collect() |> sf::st_zm() |> 
+            sf::st_transform(4326)
           
-          ds_streams = ds_streams |> 
-            dplyr::arrange(Waterbody) |> 
-            dplyr::slice(1)
+          if(nrow(ds_streams) > 0){
+            ds_streams = ds_streams |> 
+              dplyr::rename(Waterbody = GNIS_NAME) |> 
+              dplyr::group_by(FWA_WATERSHED_CODE, Waterbody) |> 
+              dplyr::summarise(.groups = "drop")
+            
+            ds_streams = ds_streams |> 
+              dplyr::arrange(Waterbody) |> 
+              dplyr::slice(1)
+          }
         }
         
         #modified, removed summary and added a select
@@ -368,6 +369,7 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
         cdc_in_ds_wb = cdc_in_ds_wb[!cdc_in_ds_wb %in% sara_sp]
         cdc_in_ds_wb = cdc_in_ds_wb[!cdc_in_ds_wb %in% cosewic_risk_status_sp]
         
+        if(y == 2) browser()
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_in_wb = length(unique(sara_combo))
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_in_wb_names = ifelse(length(sara_combo) > 0, paste0(unique(na.omit(sara_combo)), collapse = ", "), "none")
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$sara_downstream = length(unique(sara_combo_ds))
@@ -384,20 +386,40 @@ native_CDC_COSEWIC_SARA_species_occurrence_counter = function(d,unique_wbs,wbs_o
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_in_wb_names = ifelse(length(cdc_in_wb) > 0, paste0(unique(na.omit(cdc_in_wb)), collapse = ", "), "none")
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_downstream = length(cdc_in_ds_wb)
         d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,]$cdc_listed_downstream_names = ifelse(length(cdc_in_ds_wb) > 0, paste0(unique(na.omit(cdc_in_ds_wb)), collapse = ", "), "none")
+      
+        
+        # Now do the same thing to update the previous_results file!
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$other_ais_in_wb = length(unique(ais_in_wb[ais_in_wb != d[i,]$Species]))
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$other_ais_in_wb_names = ifelse(length(ais_in_wb[ais_in_wb != d[i,]$Species]) > 0, paste0(ais_in_wb[ais_in_wb != the_species], collapse = ", "), NA)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$native_species_in_wb = length(unique(native_sp_in_wb))
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$native_species_in_wb_names = ifelse(length(native_sp_in_wb) > 0, paste0(native_sp_in_wb, collapse = ", "), NA)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$sara_in_wb = length(unique(sara_combo))
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$sara_in_wb_names = ifelse(length(sara_combo) > 0, paste0(unique(na.omit(sara_combo)), collapse = ", "), "none")
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$sara_downstream = length(unique(sara_combo_ds))
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$sara_downstream_names = ifelse(length(sara_combo_ds) > 0, paste0(unique(na.omit(sara_combo_ds)), collapse = ", "), "none")
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$COSEWIC_in_wb = length(cosewic_sp_in_wb)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$COSEWIC_in_wb_names = ifelse(length(cosewic_sp_in_wb) > 0, paste0(unique(na.omit(cosewic_sp_in_wb)), collapse = ", "), "none")
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$COSEWIC_downstream = length(cosewic_sp_in_ds_wb)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$COSEWIC_downstream_names = ifelse(length(cosewic_sp_in_ds_wb) > 0, paste0(unique(na.omit(cosewic_sp_in_ds_wb)), collapse = ", "), NA)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$cdc_listed_in_wb = length(cdc_in_wb)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$cdc_listed_in_wb_names = ifelse(length(cdc_in_wb) > 0, paste0(unique(na.omit(cdc_in_wb)), collapse = ", "), "none")
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$cdc_listed_downstream = length(cdc_in_ds_wb)
+        previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][y,]$cdc_listed_downstream_names = ifelse(length(cdc_in_ds_wb) > 0, paste0(unique(na.omit(cdc_in_ds_wb)), collapse = ", "), "none")
       }
+      
       # Save this new row to our query results!
-      previous_results = dplyr::bind_rows(
-        previous_results,
-        d[d$Waterbody == the_wb$Waterbody & d$Region == the_wb$Region,][y,] |> 
-          sf::st_drop_geometry() |> 
-          dplyr::mutate(query_date = Sys.Date()) |> 
-          dplyr::select(query_date, Region:Established_in_Waterbody, FWA_WATERSHED_CODE,
-                        records_in_wb:other_ais_in_wb_names))
-      if(nrow(previous_results |> dplyr::filter(Region == d[i,]$Region, Waterbody == d[i,]$Waterbody, Species == d[i,]$Species)) == 0){
-        saveRDS(previous_results |> dplyr::distinct(), file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
-        print("saved new waterbody row to the previous results RDS file")
-      }
+      # browser()
+      
+      saveRDS(previous_results |> 
+                dplyr::group_by(Region,Waterbody) |> 
+                dplyr::arrange(dplyr::desc(query_date)) |> 
+                dplyr::slice(1) |> 
+                dplyr::ungroup(), 
+              file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+      print("saved new waterbody row to the previous results RDS file")
+      
     }
   }
   return(d)
 }
+

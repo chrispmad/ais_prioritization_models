@@ -1,4 +1,7 @@
 add_occurrence_record_fields = function(d, lan_root){
+  
+  print("Reading in AIS spatial layer from LAN")
+  
   occ_species = sf::read_sf(paste0(lan_root,"2 SCIENCE - Invasives/SPECIES/5_Incidental Observations/AIS_occurrences_all_sources.gpkg")) |> 
     dplyr::filter(Species %in% unique(d$Species))
   
@@ -12,12 +15,15 @@ add_occurrence_record_fields = function(d, lan_root){
     )
   
   d$records_in_wb = 0
+  d$present_or_absent = 'ABSENT'
   
+  print("Records by species...")
   for(i in 1:nrow(d)){
     # print(i)
     recs_by_sp = occ_species[occ_species$Species == d[i,]$Species,]
     recs_by_wb = recs_by_sp |> sf::st_filter(st_buffer(d[i,]$geometry, 20))
     d[i,]$records_in_wb = nrow(recs_by_wb)
+    d[i,]$present_or_absent = ifelse(nrow(recs_by_wb) > 0, "PRESENT", "ABSENT")
   }
   
   # 2. New to Waterbody - e.g. are occurrence records for waterbody from the last year?
@@ -26,6 +32,7 @@ add_occurrence_record_fields = function(d, lan_root){
   d$oldest_record = NA
   
   # Some species don't have an oldest record - why?
+  print("Finding oldest record etc and new to waterbody fields")
   for(i in 1:nrow(d)){
     # print(i)
     recs_by_sp = occ_species[occ_species$Species == d[i,]$Species,]

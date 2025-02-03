@@ -104,7 +104,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   other_columns = d |> 
     sf::st_drop_geometry() |> 
-    dplyr::select(Region:Established_in_Waterbody, new_to_waterbody, oldest_record,first_nations_cons_area_overlapped, 
+    dplyr::select(Region:Established_in_Waterbody, present_or_absent, new_to_waterbody, oldest_record,first_nations_cons_area_overlapped, 
                   wildlife_habitat_areas, wildlife_habitat_areas_hectares, other_ais_in_wb, other_ais_in_wb_names) |> 
     dplyr::mutate(oldest_record_b = round(1/log(as.numeric(stringr::str_extract(Sys.Date(),'^[0-9]{4}')) - oldest_record + 2.71),3))
   
@@ -188,6 +188,15 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   #   )
   # =========================================
   
+  # Ensure we aren't duplicating any region-waterbody-species combos!
+  results = results |> 
+    dplyr::filter(!duplicated(paste0(Waterbody,Species)))
+  
+  # Copy the 'Everything bagel' sheet and filter for just those species that 
+  # have "PRESENT" for present_or_absent 
+  results_present = results |> 
+    dplyr::filter(present_or_absent == "PRESENT")
+  
   # specify column as formula per openxlsx::writeFormula option #2
   class(results$Species) <- "formula"
   class(results$wb_maxent_suitability_fig) <- "formula"
@@ -196,37 +205,44 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   my_wb = createWorkbook()
   
   # Add sheet(s)
-  openxlsx::addWorksheet(my_wb, "model")
+  openxlsx::addWorksheet(my_wb, "AIS_Present")
+  openxlsx::addWorksheet(my_wb, "All_Waterbodies")
   
   # Add data to worksheet.
-  openxlsx::writeData(my_wb, "model", results)
-  
-  red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour = '#bdf0e6')
-  blue_text = openxlsx::createStyle(fontColour = 'blue', fontSize = 12)
-  
-  green_fill = openxlsx::createStyle(fgFill = "#abe0b9")
-  yellow_fill = openxlsx::createStyle(fgFill = "#ede695")
-  purple_fill = openxlsx::createStyle(fgFill = "#d96aca")
-  
-  openxlsx::addStyle(my_wb, "model", style = red_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="priority_b"))
-  openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="Species"))
-  openxlsx::addStyle(my_wb, "model", style = blue_text, rows = (2:(1+nrow(results))), cols = which(names(results)=="wb_maxent_suitability_fig"))
-  
-  c(names(intro)[-c(1:3)],'intro_total') |>
-    lapply(\(x) openxlsx::addStyle(my_wb, "model", style = green_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
-  
-  c(names(hab_suit)[-c(1:3)],'hab_suit_total') |>
-    lapply(\(x) openxlsx::addStyle(my_wb, "model", style = yellow_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
-  
-  c(names(conseq)[-c(1:3)],'conseq_total') |>
-    lapply(\(x) openxlsx::addStyle(my_wb, "model", style = purple_fill, rows = 1:(1+nrow(results)), cols = c(which(names(results) == x))))
-  
-  openxlsx::setColWidths(my_wb, "model", cols = 1:ncol(results), widths = "auto")
-  openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "Species"), widths = 20)
-  openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == "first_nations_cons_area_overlapped"), widths = 30)
-  openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'other_ais_in_wb_names'), widths = 20)
-  openxlsx::setColWidths(my_wb, "model", cols = which(names(results) == 'native_species_in_wb_names'), widths = 30)
-  
+  purrr::map2(
+    c("results_present","results"),
+    c("AIS_Present","All_Waterbodies"),
+    ~ {
+      
+      openxlsx::writeData(my_wb, .y, .x)
+      
+      red_text = openxlsx::createStyle(fontColour = 'red', fontSize = 14, borderColour = '#bdf0e6')
+      blue_text = openxlsx::createStyle(fontColour = 'blue', fontSize = 12)
+      
+      green_fill = openxlsx::createStyle(fgFill = "#abe0b9")
+      yellow_fill = openxlsx::createStyle(fgFill = "#ede695")
+      purple_fill = openxlsx::createStyle(fgFill = "#d96aca")
+      
+      openxlsx::addStyle(my_wb, .y, style = red_text, rows = (2:(1+nrow(.x))), cols = which(names(.x)=="priority_b"))
+      openxlsx::addStyle(my_wb, .y, style = blue_text, rows = (2:(1+nrow(.x))), cols = which(names(.x)=="Species"))
+      openxlsx::addStyle(my_wb, .y, style = blue_text, rows = (2:(1+nrow(.x))), cols = which(names(.x)=="wb_maxent_suitability_fig"))
+      
+      c(names(intro)[-c(1:3)],'intro_total') |>
+        lapply(\(x) openxlsx::addStyle(my_wb, .y, style = green_fill, rows = 1:(1+nrow(.x)), cols = c(which(names(.x) == x))))
+      
+      c(names(hab_suit)[-c(1:3)],'hab_suit_total') |>
+        lapply(\(x) openxlsx::addStyle(my_wb, .y, style = yellow_fill, rows = 1:(1+nrow(.x)), cols = c(which(names(.x) == x))))
+      
+      c(names(conseq)[-c(1:3)],'conseq_total') |>
+        lapply(\(x) openxlsx::addStyle(my_wb, .y, style = purple_fill, rows = 1:(1+nrow(.x)), cols = c(which(names(.x) == x))))
+      
+      openxlsx::setColWidths(my_wb, .y, cols = 1:ncol(.x), widths = "auto")
+      openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == "Species"), widths = 20)
+      openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == "first_nations_cons_area_overlapped"), widths = 30)
+      openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == 'other_ais_in_wb_names'), widths = 20)
+      openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == 'native_species_in_wb_names'), widths = 30)
+      
+    })
   # Add metadata.
   openxlsx::addWorksheet(my_wb, "metadata")
   
