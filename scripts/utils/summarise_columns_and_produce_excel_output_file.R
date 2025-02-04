@@ -210,9 +210,13 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   # Add data to worksheet.
   purrr::map2(
-    c("results_present","results"),
+    c(list(results_present,results)),
     c("AIS_Present","All_Waterbodies"),
     ~ {
+      
+      # Ensure hyperlinks are properly formatted.
+      class(.x$Species) <- "formula"
+      class(.x$wb_maxent_suitability_fig) <- "formula"
       
       openxlsx::writeData(my_wb, .y, .x)
       
@@ -235,7 +239,6 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
       
       c(names(conseq)[-c(1:3)],'conseq_total') |>
         lapply(\(x) openxlsx::addStyle(my_wb, .y, style = purple_fill, rows = 1:(1+nrow(.x)), cols = c(which(names(.x) == x))))
-      
       openxlsx::setColWidths(my_wb, .y, cols = 1:ncol(.x), widths = "auto")
       openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == "Species"), widths = 20)
       openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == "first_nations_cons_area_overlapped"), widths = 30)
@@ -243,6 +246,8 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
       openxlsx::setColWidths(my_wb, .y, cols = which(names(.x) == 'native_species_in_wb_names'), widths = 30)
       
     })
+  
+  
   # Add metadata.
   openxlsx::addWorksheet(my_wb, "metadata")
   

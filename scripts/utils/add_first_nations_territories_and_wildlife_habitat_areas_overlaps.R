@@ -1,77 +1,108 @@
-add_first_nations_territories_and_wildlife_habitat_areas_overlaps = function(d,onedrive_wd,prev_res){
+add_first_nations_territories_and_wildlife_habitat_areas_overlaps = function(d,unique_wbs,onedrive_wd){
   # First Nations territories within 10 kilometers
-  fnpip = sf::read_sf("W:/CMadsen/shared_data_sets/first_nations_PIP_consultation_areas.shp") |> 
-    sf::st_transform(4326)
-  
-  fnpip = st_make_valid(fnpip)
-  
   d$first_nations_cons_area_overlapped = NA
   
   for(i in 1:nrow(d)){
-    
+    # for(i in 1:34){
     print(i)
-    the_wb = d[i,]
-    this_previous_result = prev_res[prev_res$Waterbody == the_wb$Waterbody & prev_res$Region == the_wb$Region,][1,]
+    the_wb = unique_wbs[i,]
+    geom_for_wb = d |> 
+      dplyr::filter(Waterbody == the_wb$Waterbody, Region == the_wb$Region) |> 
+      dplyr::select(Waterbody,Region,FWA_WATERSHED_CODE,geometry) |> 
+      dplyr::distinct()
+    previous_results = readRDS(file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    if(!'first_nations_cons_area_overlapped' %in% names(previous_results)) {
+      previous_results$first_nations_cons_area_overlapped = NA
+    }
+    this_prev <- previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][1,]
+    redo_row_test = is.na(this_prev$first_nations_cons_area_overlapped) | this_prev$query_date + lubridate::dmonths(1) < Sys.Date()
     
-    # Do we have a result for this variable already in 'prev_res' file? If so, load in now!
-    if(nrow(this_previous_result[!is.na(this_previous_result$first_nations_cons_area_overlapped),]) > 0){
-      d[i,]$first_nations_cons_area_overlapped = this_previous_result$first_nations_cons_area_overlapped
+    # Do we have a result for this variable already in 'this_prev' file? If so, load in now!
+    if(!redo_row_test){
+      d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$first_nations_cons_area_overlapped = this_prev$first_nations_cons_area_overlapped
       print("We already had a value for this value of i!")
     } else {
       # Otherwise, calculate it!
-      if(!sf::st_is_empty(the_wb$geometry)){
-        fnpip_con_areas = fnpip |> sf::st_filter(sf::st_buffer(d[i,]$geometry,10000))
-        d[i,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
-        prev_res[prev_res$Waterbody == the_wb$Waterbody & prev_res$Region == the_wb$Region,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
-        saveRDS(prev_res |> dplyr::distinct(), file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
-      } else {
-        print(paste0("Warning: ",the_wb$Waterbody," in ",the_wb$Region," has no geometry! You should probably fix this."))
+      if(!exists("fnpip")){
+        fnpip = sf::read_sf("W:/CMadsen/shared_data_sets/first_nations_PIP_consultation_areas.shp") |> 
+          sf::st_transform(4326)
+        fnpip = st_make_valid(fnpip)
+      }
+      if(nrow(geom_for_wb) > 0){
+        if(!sf::st_is_empty(geom_for_wb$geometry)){
+          fnpip_con_areas = fnpip |> sf::st_filter(sf::st_buffer(geom_for_wb$geometry,10000))
+          d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
+          previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,]$first_nations_cons_area_overlapped = paste0(unique(fnpip_con_areas$CONTACT_NA),collapse = ', ')
+          saveRDS(previous_results |> 
+                    dplyr::group_by(Region,Waterbody,Species) |> 
+                    dplyr::arrange(dplyr::desc(query_date)) |> 
+                    dplyr::slice(1) |> 
+                    dplyr::ungroup(), 
+                  file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+        } else {
+          print(paste0("Warning: ",the_wb$Waterbody," in ",the_wb$Region," has no geometry! You should probably fix this."))
+        }
       }
     }
   }
   
   d$wildlife_habitat_areas = NA
   d$wildlife_habitat_areas_hectares = NA
-  # prev_res$wildlife_habitat_areas = NA
-  # prev_res$wildlife_habitat_areas_hectares = 0
+  # this_prev$wildlife_habitat_areas = NA
+  # this_prev$wildlife_habitat_areas_hectares = 0
   # Wildlife Habitat Areas (GAR)
   for(i in 1:nrow(d)){
-    
+    # for(i in 1:34){
     print(i)
+    the_wb = unique_wbs[i,]
+    geom_for_wb = d |> 
+      dplyr::filter(Waterbody == the_wb$Waterbody, Region == the_wb$Region) |> 
+      dplyr::select(Waterbody,Region,FWA_WATERSHED_CODE,geometry) |> 
+      dplyr::distinct()
+    previous_results = readRDS(file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
+    if(!'wildlife_habitat_areas' %in% names(previous_results)) {
+      previous_results$wildlife_habitat_areas = NA
+      previous_results$wildlife_habitat_areas_hectares = NA
+    }
+    this_prev <- previous_results[previous_results$Waterbody == the_wb$Waterbody & previous_results$Region == the_wb$Region,][1,]
+    redo_row_test = is.na(this_prev$wildlife_habitat_areas) | this_prev$query_date + lubridate::dmonths(1) < Sys.Date()
     
-    the_wb = d[i,]
-    this_previous_result = prev_res[prev_res$Waterbody == the_wb$Waterbody & prev_res$Region == the_wb$Region,][1,]
-    
-    # if(i == 10) browser()
-    
-    # Do we have a result for this variable already in 'prev_res' file? If so, load in now!
-    if(nrow(this_previous_result[!is.na(this_previous_result$wildlife_habitat_areas),]) > 0){
+    # Do we have a result for this variable already in 'this_prev' file? If so, load in now!
+    if(!redo_row_test){
+      d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas = this_prev$wildlife_habitat_areas
+      d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas_hectares = this_prev$wildlife_habitat_areas_hectares
       print("We already had a value for this value of i!")
-      d[i,]$wildlife_habitat_areas = this_previous_result$wildlife_habitat_areas
-      d[i,]$wildlife_habitat_areas_hectares = this_previous_result$wildlife_habitat_areas_hectares
     } else {
-      if(!sf::st_is_empty(the_wb$geometry)){
-        
-        wb_in_albers = sf::st_buffer(sf::st_transform(the_wb, 3005),1000)
-        
-        wha_touching_wb = bcdata::bcdc_query_geodata("wildlife-habitat-areas-approved") |> 
-          dplyr::filter(bcdata:::INTERSECTS(wb_in_albers$geometry)) |> 
-          bcdata::collect()
-        
-        if(nrow(wha_touching_wb) > 0){
-          d[i,]$wildlife_habitat_areas = nrow(wha_touching_wb)
-          d[i,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
-        }else{
-          d[i,]$wildlife_habitat_areas = 0
-          d[i,]$wildlife_habitat_areas_hectares = 0
+      if(nrow(geom_for_wb) > 0){
+        if(!sf::st_is_empty(geom_for_wb$geometry)){
+          
+          wb_in_albers = sf::st_buffer(sf::st_transform(geom_for_wb, 3005),1000)
+          
+          wha_touching_wb = bcdata::bcdc_query_geodata("wildlife-habitat-areas-approved") |> 
+            dplyr::filter(bcdata:::INTERSECTS(wb_in_albers$geometry)) |> 
+            bcdata::collect()
+          
+          if(nrow(wha_touching_wb) > 0){
+            d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas = nrow(wha_touching_wb)
+            d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
+            this_prev[this_prev$Region == the_wb$Region & this_prev$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas = nrow(wha_touching_wb)
+            this_prev[this_prev$Region == the_wb$Region & this_prev$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
+          }else{
+            d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas = 0
+            d[d$Region == the_wb$Region & d$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas_hectares = 0
+            this_prev[this_prev$Region == the_wb$Region & this_prev$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas = 0
+            this_prev[this_prev$Region == the_wb$Region & this_prev$Waterbody == the_wb$Waterbody,]$wildlife_habitat_areas_hectares = 0
+          }
+          saveRDS(previous_results |> 
+                    dplyr::group_by(Region,Waterbody,Species) |> 
+                    dplyr::arrange(dplyr::desc(query_date)) |> 
+                    dplyr::slice(1) |> 
+                    dplyr::ungroup(), 
+                  file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
         }
-        prev_res[prev_res$Waterbody == the_wb$Waterbody & prev_res$Region == the_wb$Region,]$wildlife_habitat_areas = nrow(wha_touching_wb)
-        prev_res[prev_res$Waterbody == the_wb$Waterbody & prev_res$Region == the_wb$Region,]$wildlife_habitat_areas_hectares = sum(wha_touching_wb$HECTARES, na.rm=T)
-        saveRDS(prev_res |> dplyr::distinct(), file = paste0(onedrive_wd,"AIS_previous_query_results.rds"))
-        print("We've updated prev_res again!")
-      }
-      else {
-        print(paste0("Warning: ",the_wb$Waterbody," in ",the_wb$Region," has no geometry! You should probably fix this."))
+        else {
+          print(paste0("Warning: ",the_wb$Waterbody," in ",the_wb$Region," has no geometry! You should probably fix this."))
+        }
       }
     }
   }

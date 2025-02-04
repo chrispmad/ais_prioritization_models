@@ -10,7 +10,7 @@ add_maxent_prediction_vars = function(d,onedrive_wd,maxent_output_folder){
   # file.copy(from = maxent_output_folder, to = paste0(onedrive_wd), recursive = T)
   
   for(i in 1:nrow(d)){
-    
+
     print(i)
     the_species = d[i,]$Species
     the_species_snake = snakecase::to_snake_case(the_species)
