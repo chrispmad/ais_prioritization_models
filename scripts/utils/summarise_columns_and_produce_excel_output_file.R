@@ -1,4 +1,4 @@
-summarise_columns_and_produce_excel_output_file = function(dat,output_folder,maxent_output_folder){
+summarise_columns_and_produce_excel_output_file = function(dat,output_folder,maxent_output_folder,remove_zero_sara){
   
   ## add filter here
   if (remove_zero_sara) {

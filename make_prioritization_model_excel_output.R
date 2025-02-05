@@ -29,7 +29,7 @@ for(m in 1){
   output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/")
   maxent_output_folder = paste0(output_folder,"MaxEnt_predictions/")
   
-  ## sara T and F
+  ## Remove rows where SARA overlaps are lacking?
   remove_zero_sara = TRUE
   
   # Read in utility scripts for functions
@@ -121,5 +121,5 @@ for(m in 1){
   # =========================================
   # Make bins for variables
   print("Summarising output to Excel file!")
-  summarise_columns_and_produce_excel_output_file(d,output_folder,maxent_output_folder)
+  summarise_columns_and_produce_excel_output_file(d,output_folder,maxent_output_folder,remove_zero_sara)
 }
