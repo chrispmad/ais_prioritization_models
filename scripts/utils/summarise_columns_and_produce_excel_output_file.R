@@ -1,5 +1,11 @@
 summarise_columns_and_produce_excel_output_file = function(dat,output_folder,maxent_output_folder){
   
+  ## add filter here
+  if (remove_zero_sara) {
+    d <- d |> 
+      filter(is.na(Watershed) | (sara_in_wb != 0 & sara_downstream != 0))
+  }
+  
   d_bins = d |> 
     sf::st_drop_geometry() |> 
     rowwise() |> 
@@ -88,6 +94,9 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
       T ~ 0
     )) |> 
     dplyr::mutate(introduction_risk_b = dplyr::case_when(
+      #if the species is present in the waterbody, then the risk of introduction is max! set to three
+      present_or_absent == "PRESENT" ~ 3,
+      #otherwise we will use values from the probability of introduction, through maxent
       introduction_risk_mean < 0.5 ~ 1,
       introduction_risk_mean >= 0.5 & introduction_risk_mean < 0.7 ~ 2,
       introduction_risk_mean >= 0.7 ~ 3,
@@ -162,7 +171,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   # # Add an overall summary column
   # results$priority_b = results$intro_total + results$hab_suit_total + results$conseq_total
-  results$priority_b = round(results$intro_total/2 + results$hab_suit_total + results$conseq_total, 2)
+  results$priority_b = round(results$intro_total + results$hab_suit_total + results$conseq_total, 2)
   
   
   # Shuffle column order a bit.
