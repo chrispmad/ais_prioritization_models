@@ -3,7 +3,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   ## add filter here
   if (remove_zero_sara) {
     d <- d |> 
-      filter(is.na(Watershed) | (sara_in_wb != 0 & sara_downstream != 0))
+      filter(is.na(Watershed) | (sara_in_wb != 0 & sara_downstream != 0 & sara_overlap_wbs_in_10_km != 0))
   }
   
   d_bins = d |> 
@@ -17,8 +17,8 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
     # )) |> 
     dplyr::mutate(number_inflows_b = dplyr::case_when(
       number_inflows <= 5 ~ 1,
-      number_inflows <= 25 ~ 2,
-      number_inflows > 25 ~ 3,
+      number_inflows <= 50 ~ 2,
+      number_inflows > 50 ~ 3,
       T ~ 0
     )) |> 
     dplyr::mutate(other_ais_in_wb_b = dplyr::case_when(
@@ -47,13 +47,20 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
       sara_downstream >= 3 ~ 3,
       T ~ 0
     )) |> 
-    dplyr::mutate(COSEWIC_in_wb_b = dplyr::case_when(
-      COSEWIC_in_wb == 0 ~ 0,
-      COSEWIC_in_wb == 1 ~ 1,
-      COSEWIC_in_wb == 2 ~ 2,
-      COSEWIC_in_wb >= 3 ~ 3,
+    dplyr::mutate(sara_overlap_wbs_in_10_km_b = dplyr::case_when(
+      sara_overlap_wbs_in_10_km == 0 ~ 0,
+      sara_overlap_wbs_in_10_km > 0 & sara_overlap_wbs_in_10_km <= 2 ~ 1,
+      sara_overlap_wbs_in_10_km > 2 & sara_overlap_wbs_in_10_km <= 4 ~ 2,
+      sara_overlap_wbs_in_10_km >= 5 ~ 3,
       T ~ 0
     )) |> 
+  dplyr::mutate(COSEWIC_in_wb_b = dplyr::case_when(
+    COSEWIC_in_wb == 0 ~ 0,
+    COSEWIC_in_wb == 1 ~ 1,
+    COSEWIC_in_wb == 2 ~ 2,
+    COSEWIC_in_wb >= 3 ~ 3,
+    T ~ 0
+  )) |> 
     dplyr::mutate(COSEWIC_downstream_b = dplyr::case_when(
       COSEWIC_downstream == 0 ~ 0,
       COSEWIC_downstream == 1 ~ 1,
@@ -124,7 +131,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
     dplyr::select(Region:Established_in_Waterbody, wb_maxent_suitability_max, wb_maxent_suitability_mean, wb_maxent_training_AUC, maxent_suitability_max_b, maxent_suitability_mean_b, m_suit_uncertainty_b, wb_maxent_suitability_fig)
   
   conseq = d_bins |> 
-    dplyr::select(Region:Established_in_Waterbody, sara_in_wb:native_species_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b, SAR_overlap_wbs_in_10_km)
+    dplyr::select(Region:Established_in_Waterbody, sara_in_wb:native_species_in_wb_names, other_ais_in_wb_b:cdc_listed_downstream_b, sara_overlap_wbs_in_10_km,sara_overlap_wbs_in_10_km_b)
   
   dat_l = list(other_columns, intro, hab_suit, conseq)
   names(dat_l) = c('other_columns', 'intro', 'hab_suit', 'conseq') 
@@ -132,12 +139,18 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   results = purrr::map2(dat_l,names(dat_l), ~ {
     
     binned_cols = names(.x)[stringr::str_detect(names(.x), "_b$")]
+    if(.y == "conseq") binned_cols = binned_cols[stringr::str_detect(binned_cols,"^sara_")]
+    if(.y == "hab_suit") binned_cols = binned_cols[binned_cols != "m_suit_uncertainty_b"]
     all_other_cols = names(.x)[!names(.x) %in% binned_cols]
     number_cols = length(binned_cols)
     
+    # If we're dealing with the consequence column, ONLY use the SARA-related columns for the calculation.
+    
     if(number_cols > 0){
+      # if(.y == "conseq") browser()
       result = .x |> 
         tidyr::pivot_longer(cols = -all_other_cols) |> 
+        # dplyr::select(Region,Species,Waterbody) |> 
         dplyr::group_by(Region,Species,Waterbody) |> 
         dplyr::mutate(!!rlang::sym(paste0(.y,"_total")) := sum(value,na.rm=T) / number_cols) |> 
         dplyr::ungroup() |> 
@@ -176,7 +189,7 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   # Shuffle column order a bit.
   results = results |> 
-    dplyr::select(Region:wildlife_habitat_areas_hectares,oldest_record_b:cdc_listed_downstream_b,SAR_overlap_wbs_in_10_km,conseq_total,
+    dplyr::select(Region:wildlife_habitat_areas_hectares,oldest_record_b:cdc_listed_downstream_b,sara_overlap_wbs_in_10_km,sara_overlap_wbs_in_10_km_b,conseq_total,
                   other_ais_in_wb,other_ais_in_wb_b,other_ais_in_wb_names,priority_b)
   
   # # Make column names nicer.
@@ -288,15 +301,17 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   binning_levels = data.frame(variable = c("number_inflows_b","other_ais_in_wb_b",
                                            "sara_in_wb_b","sara_downstream_b",
+                                           "sara_overlap_wbs_in_10_km_b",
                                            "COSEWIC_in_wb_b","COSEWIC_downstream_b",
                                            "cdc_listed_in_wb_b","cdc_listed_downstream_b",
                                            "maxent_suitability_max_b","maxent_suitability_mean_b",
                                            "m_suit_uncertainty_b","introduction_risk_b"
   ),
-  levels = c("<= 5 ~ 1, <= 25 ~ 2, > 25 ~ 3",
+  levels = c("<= 5 ~ 1, <= 50 ~ 2, > 50 ~ 3",
              "<= 3 ~ 0, <= 6 ~ -1, > 6 ~ -2",
              "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
              "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
+             "0 ~ 0, 0 < x <= 2 ~ 1, 2 < x <= 4 ~ 2, x >= 5 ~ 3",
              "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
              "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
              "0 ~ 0, 1 ~ 1, 2 ~ 2, >= 3 ~ 3",
@@ -310,13 +325,15 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   openxlsx::writeData(my_wb, "binning_levels", binning_levels)
   
+  # Grab the columns in each category, paste together with " + ", and find number of columns in each category
   intro_bit = paste0(names(intro)[-c(1:5)],collapse=" + ")
   intro_var_number = length(names(intro)[str_detect(names(intro),"_b$")])
-  hab_suit_bit = paste0(names(hab_suit)[str_detect(names(hab_suit),'_b')],collapse=" + ")
-  hab_suit_var_number = length(names(hab_suit)[str_detect(names(hab_suit),"_b")])
-  conseq_bit = paste0(names(conseq)[str_detect(names(conseq),"_b")],collapse=" + ")
-  conseq_var_number = length(names(conseq)[str_detect(names(conseq),"_b")])
+  hab_suit_bit = paste0(names(hab_suit)[str_detect(names(hab_suit),'_b') & !str_detect(names(hab_suit),"m_suit_uncertainty_b")],collapse=" + ")
+  hab_suit_var_number = length(names(hab_suit)[str_detect(names(hab_suit),'_b') & !str_detect(names(hab_suit),"m_suit_uncertainty_b")])
+  conseq_bit = paste0(names(conseq)[str_detect(names(conseq),"_b") & str_detect(names(conseq),"^sara_")],collapse=" + ")
+  conseq_var_number = length(names(conseq)[str_detect(names(conseq),"_b") & str_detect(names(conseq),"^sara_")])
   
+  # Use the above to generate a simple representation of the equation.
   math_equation = paste0("(",intro_bit,")/",intro_var_number," + (",
                          hab_suit_bit,")/",hab_suit_var_number," + (",
                          conseq_bit,")/",conseq_var_number)
@@ -329,3 +346,4 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
                          overwrite = T)
   
 }
+

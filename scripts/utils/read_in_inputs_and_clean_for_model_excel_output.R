@@ -1,6 +1,7 @@
 read_in_inputs_and_clean_for_model_excel_output = function(onedrive_wd){
   # Table of Region, species and waterbody names. Note: might be nicer to make this
   # in excel and read it in.
+
   d = readxl::read_excel("inputs_for_prioritization_model.xlsx")
   
   named_wbs = sf::read_sf("W:/CMadsen/shared_data_sets/summarized_bc_waterbodies.shp")
@@ -72,6 +73,11 @@ read_in_inputs_and_clean_for_model_excel_output = function(onedrive_wd){
         crossing(Species = unique(d_watershed[[watershed_row]]$Species)) |> 
         dplyr::mutate(Established_in_Waterbody = NA,
                       Watershed = the_watershed)
+      
+      # If we are ONLY running the CNF Fraser and Columbia River Watershed rows,
+      # we need to ensure that the 'Region' column is character, not logical.
+      if(is.logical(d$Region)) d$Region = as.character(d$Region)
+      
       d = d |> 
         dplyr::filter(!is.na(Region)) |>
         dplyr::bind_rows(d_watershed_rows_for_join)

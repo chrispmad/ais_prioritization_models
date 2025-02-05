@@ -42,7 +42,7 @@ for(m in 1){
   source("scripts/utils/add_introduction_risk.R")
   source("scripts/utils/add_maxent_prediction_vars.R")
   source("scripts/utils/summarise_columns_and_produce_excel_output_file.R")
-  source("scripts/utils/add_SAR_overlap_wbs_in_10_km_variable.R")
+  source("scripts/utils/add_sara_overlap_wbs_in_10_km_variable.R")
   source("scripts/utils/count_trailing_zeros.R")
   source("scripts/utils/find_downstream_waterbody.R")
   source("scripts/utils/join_sara_cdc_to_wb.R")
@@ -93,8 +93,8 @@ for(m in 1){
   # Additional test - look for waterbodies within x KM that are connected
   # to focal waterbody and that have SAR overlaps
   print("Adding in overlaps with SAR waterbodies that are within 10 km of target waterbodies")
-  sar_overlap_wbs = sf::read_sf(paste0(onedrive_wd,"waterbodies_overlapping_with_SARA_and_CDC_occs.gpkg"))
-  d = add_SAR_overlap_wbs_in_10_km(d,sar_overlap_wbs,previous_results)
+  sara_overlap_wbs = sf::read_sf(paste0(onedrive_wd,"waterbodies_overlapping_with_SARA_and_CDC_occs.gpkg"))
+  d = add_sara_overlap_wbs_in_10_km(d,sara_overlap_wbs,previous_results)
   
   # 2. Number of records in waterbody
   print("Adding in occurrence record fields")
