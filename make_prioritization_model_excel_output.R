@@ -29,6 +29,9 @@ for(m in 1){
   output_folder = paste0(lan_root,"2 SCIENCE - Invasives/GENERAL/Budget/Canada Nature fund 2023-2026/Work Planning and modelling/")
   maxent_output_folder = paste0(output_folder,"MaxEnt_predictions/")
   
+  ## sara T and F
+  remove_zero_sara = TRUE
+  
   # Read in utility scripts for functions
   source('scripts/utils/gather_AIS_data.R')
   source('scripts/utils/native_CDC_COSEWIC_SARA_species_occurrence_counter.R')
