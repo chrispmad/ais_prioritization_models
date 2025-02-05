@@ -310,6 +310,18 @@ summarise_columns_and_produce_excel_output_file = function(dat,output_folder,max
   
   openxlsx::writeData(my_wb, "binning_levels", binning_levels)
   
+  intro_bit = paste0(names(intro)[-c(1:5)],collapse=" + ")
+  intro_var_number = length(names(intro)[str_detect(names(intro),"_b$")])
+  hab_suit_bit = paste0(names(hab_suit)[str_detect(names(hab_suit),'_b')],collapse=" + ")
+  hab_suit_var_number = length(names(hab_suit)[str_detect(names(hab_suit),"_b")])
+  conseq_bit = paste0(names(conseq)[str_detect(names(conseq),"_b")],collapse=" + ")
+  conseq_var_number = length(names(conseq)[str_detect(names(conseq),"_b")])
+  
+  math_equation = paste0("(",intro_bit,")/",intro_var_number," + (",
+                         hab_suit_bit,")/",hab_suit_var_number," + (",
+                         conseq_bit,")/",conseq_var_number)
+  openxlsx::addWorksheet(my_wb, "formula")
+  openxlsx::writeData(my_wb, "formula", math_equation)
   openxlsx::saveWorkbook(my_wb, file = "output/example_ais_prioritization_results.xlsx",
                          overwrite = T)
   
